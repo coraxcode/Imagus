@@ -68,13 +68,39 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
 .mb{display:flex;justify-content:flex-end;gap:var(--sp3);margin-top:var(--sp4)}
 .bp{background:var(--acc);border:none;color:#fff;padding:3px var(--sp4);border-radius:2px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600}.bp:hover{filter:brightness(1.1)}
 .bsc{background:var(--bg1);border:1px solid var(--bd);color:var(--tx);padding:3px var(--sp4);border-radius:2px;cursor:pointer;font-family:inherit;font-size:10px}.bsc:hover{background:var(--bg3)}
-#refp{position:fixed;z-index:500;border:1px solid var(--acc);border-radius:4px;box-shadow:0 4px 12px rgba(0,0,0,.4);overflow:hidden;background:rgba(0,0,0,.05)}
-#refp .rh{display:flex;align-items:center;gap:3px;padding:2px 4px;cursor:move;background:var(--bg2);font-size:8px;color:var(--txd)}
-#refp .rh input[type="range"]{width:44px;height:3px;-webkit-appearance:none;appearance:none;background:var(--bd);border-radius:2px;cursor:pointer}
-#refp .rh input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:7px;height:7px;border-radius:50%;background:var(--acc);cursor:pointer}
-#refp .rh button{background:none;border:none;color:var(--txd);cursor:pointer;font-size:11px;padding:0 2px}
-#refp img{display:block;pointer-events:none;image-rendering:auto}
-::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:var(--bg0)}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
+#refp{
+  position:fixed;
+  z-index:500;
+  border:1px solid var(--acc);
+  border-radius:4px;
+  box-shadow:0 4px 12px rgba(0,0,0,.4);
+  overflow:hidden;
+  background:rgba(0,0,0,.05);
+  pointer-events:none; /* deixa o mouse atravessar a janela */
+}
+
+#refp .rh{
+  display:flex;
+  align-items:center;
+  gap:3px;
+  padding:2px 4px;
+  cursor:move;
+  background:var(--bg2);
+  font-size:8px;
+  color:var(--txd);
+  pointer-events:auto; /* a barra ainda pode ser clicada */
+}
+
+#refp .rh input,
+#refp .rh button{
+  pointer-events:auto; /* sliders e fechar continuam funcionando */
+}
+
+#refp img{
+  display:block;
+  pointer-events:none; /* a imagem não bloqueia desenho */
+  image-rendering:auto;
+}
 </style>
 </head>
 <body>
