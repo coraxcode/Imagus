@@ -145,6 +145,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
     <span style="width:1px;height:14px;background:var(--bd)"></span>
     <button onclick="An.togOnion()" id="bo">◎</button>
     <button onclick="An.selAllF()" title="Select all frames (0)">☐</button>
+    <button onclick="U.tweenDlg()" title="Tween frames" style="font-size:8px;width:auto;padding:0 4px">Tw</button>
     <span id="fi">1/1</span>
     <div id="fc"><span>ms</span><input type="number" id="fdi" value="100" min="1" max="65535"></div>
   </div><div id="fs"></div></div>
@@ -427,7 +428,54 @@ const An=(()=>{
   function togOnion(){onion=!onion;document.getElementById('bo').classList.toggle('on',onion);C.render();}
   function syncDur(){document.getElementById('fdi').value=frames[cf]?frames[cf].duration:100;}
   function uStrip(){const strip=document.getElementById('fs');strip.innerHTML='';const TW=48,TH=Math.max(1,Math.round(TW*C.H/C.W));frames.forEach((fr,i)=>{const div=document.createElement('div');div.className='ft'+(i===cf?' act':'');if(T.selFrames.has(i))div.classList.add('msel');const c2=document.createElement('canvas');c2.width=TW;c2.height=TH;const cx=c2.getContext('2d');cx.imageSmoothingEnabled=false;for(const ly of fr.layers){if(ly.visible){cx.globalAlpha=ly.opacity/100;cx.drawImage(ly.canvas,0,0,TW,TH);}}const sp=document.createElement('span');sp.textContent=(i+1)+' '+fr.duration+'ms';div.append(c2,sp);div.onclick=e=>{if(e.shiftKey){if(T.selFrames.has(i))T.selFrames.delete(i);else T.selFrames.add(i);uStrip();}else{T.selFrames.clear();goTo(i);}};strip.append(div);});document.getElementById('fi').textContent=`${cf+1}/${frames.length}`;syncDur();}
-  return{get frames(){return frames},set frames(v){frames=v},get cf(){return cf},set cf(v){cf=v},get onion(){return onion},get playing(){return playing},mkF,init,addF,dupF,rmF,goTo,prev,next,moveL,moveR,selAllF,pp,stop,togOnion,uStrip,syncDur};
+  /* === TWEEN: interpolate N intermediate frames between frameA and frameB === */
+  function tween(idxA,idxB,count,easeFn){
+    if(idxA<0||idxB<0||idxA>=frames.length||idxB>=frames.length||idxA===idxB||count<1)return;
+    if(idxA>idxB){const tmp=idxA;idxA=idxB;idxB=tmp;}
+    const fA=frames[idxA],fB=frames[idxB],w=C.W,h=C.H;
+    const nLayers=Math.max(fA.layers.length,fB.layers.length);
+    Hi.push();
+    const newFrames=[];
+    for(let s=1;s<=count;s++){
+      const rawT=s/(count+1);
+      const t=easeFn?easeFn(rawT):rawT;
+      const fr={layers:[],activeLayer:0,duration:Math.round(fA.duration*(1-rawT)+fB.duration*rawT)};
+      for(let li=0;li<nLayers;li++){
+        const lyA=fA.layers[li],lyB=fB.layers[li];
+        const name=(lyA?lyA.name:lyB?lyB.name:'Layer')+(li===0?'':' '+(li+1));
+        const nl=Ly.mk(name);
+        /* Interpolate opacity */
+        const opA=lyA?lyA.opacity:0,opB=lyB?lyB.opacity:0;
+        nl.opacity=Math.round(opA*(1-t)+opB*t);
+        nl.visible=(lyA?lyA.visible:true)||(lyB?lyB.visible:true);
+        /* Pixel-level RGBA interpolation */
+        const dA=lyA?lyA.ctx.getImageData(0,0,w,h).data:new Uint8ClampedArray(w*h*4);
+        const dB=lyB?lyB.ctx.getImageData(0,0,w,h).data:new Uint8ClampedArray(w*h*4);
+        const out=nl.ctx.createImageData(w,h),od=out.data;
+        const t1=1-t;
+        for(let i=0;i<od.length;i+=4){
+          /* Alpha-weighted color interpolation for correct blending */
+          const aA=dA[i+3]/255,aB=dB[i+3]/255;
+          const aOut=aA*t1+aB*t;
+          od[i+3]=Math.round(aOut*255);
+          if(aOut>0){
+            const wA=(aA*t1)/aOut,wB=(aB*t)/aOut;
+            od[i]=Math.round(dA[i]*wA+dB[i]*wB);
+            od[i+1]=Math.round(dA[i+1]*wA+dB[i+1]*wB);
+            od[i+2]=Math.round(dA[i+2]*wA+dB[i+2]*wB);
+          }
+        }
+        nl.ctx.putImageData(out,0,0);
+        fr.layers.push(nl);
+      }
+      newFrames.push(fr);
+    }
+    /* Insert between A and B */
+    frames.splice(idxA+1,0,...newFrames);
+    cf=idxA;T.selFrames.clear();
+    uStrip();Ly.ui();C.render();
+  }
+  return{get frames(){return frames},set frames(v){frames=v},get cf(){return cf},set cf(v){cf=v},get onion(){return onion},get playing(){return playing},mkF,init,addF,dupF,rmF,goTo,prev,next,moveL,moveR,selAllF,pp,stop,togOnion,uStrip,syncDur,tween};
 })();
 
 /* ==== HISTORY (Hi) ==== */
@@ -655,7 +703,41 @@ const U=(()=>{
     _renderStroke(la,_adjBackup,type,width,color,opacity);
     _adjBackup=null;cMo();Ly.ui();
   }
-  function about(){sMo(`<h3>Imagus v10</h3><p style="font-size:10px;line-height:1.5;color:var(--txd)">Professional 2D Drawing & Animation<br>Brightness/Contrast · Desaturate · Levels · Stroke<br>Radial gradient softness · Gaussian Blur/Smooth<br>Animated WebP + GIF export<br>Layer sync · Frame reorder · Import seq<br>Reference image · Magnifier · Axis lock<br>Transform+Rotate · Symmetry<br>256 Palette · Per-frame ms</p><div class="mb"><button class="bp" onclick="U.cMo()">OK</button></div>`);}
+  /* === Tween Animation Frames Dialog === */
+  function tweenDlg(){
+    if(An.frames.length<2){alert('Need at least 2 frames to tween.');return;}
+    /* Determine frame A and B from selection or current+next */
+    let fA=An.cf,fB=-1;
+    const sel=[...T.selFrames].sort((a,b)=>a-b);
+    if(sel.length>=2){fA=sel[0];fB=sel[sel.length-1];}
+    else if(sel.length===1){fA=Math.min(An.cf,sel[0]);fB=Math.max(An.cf,sel[0]);if(fA===fB)fB=Math.min(fA+1,An.frames.length-1);}
+    else{fB=Math.min(An.cf+1,An.frames.length-1);}
+    if(fA===fB){alert('Select two different frames (Shift+click) or position between two frames.');return;}
+    sMo(`<h3>Tween Animation Frames</h3>
+      <p style="font-size:9px;color:var(--txd);margin-bottom:8px">Generates intermediate frames by interpolating pixels, opacity, and timing between two keyframes.</p>
+      <label>Frame A (start)<input type="number" id="tw_a" value="${fA+1}" min="1" max="${An.frames.length}" style="width:50px"></label>
+      <label>Frame B (end)<input type="number" id="tw_b" value="${fB+1}" min="1" max="${An.frames.length}" style="width:50px"></label>
+      <label>Frames to generate<input type="number" id="tw_n" value="5" min="1" max="100" style="width:50px"></label>
+      <label>Easing<select id="tw_ease" style="width:100px">
+        <option value="linear">Linear</option>
+        <option value="easeIn">Ease In (slow start)</option>
+        <option value="easeOut">Ease Out (slow end)</option>
+        <option value="easeInOut">Ease In-Out</option>
+      </select></label>
+      <p style="font-size:8px;color:var(--txd);margin-top:6px">Tip: Shift+click two frames in timeline to pre-select A and B</p>
+      <div class="mb"><button class="bsc" onclick="U.cMo()">Cancel</button><button class="bp" onclick="U.applyTween()">Generate</button></div>`);
+  }
+  function applyTween(){
+    const a=+document.getElementById('tw_a').value-1,b=+document.getElementById('tw_b').value-1;
+    const n=Math.max(1,Math.min(100,+document.getElementById('tw_n').value||5));
+    const easeId=document.getElementById('tw_ease').value;
+    if(a<0||b<0||a>=An.frames.length||b>=An.frames.length||a===b){alert('Invalid frame range.');return;}
+    const easeFns={linear:null,easeIn:t=>t*t,easeOut:t=>t*(2-t),easeInOut:t=>t<0.5?2*t*t:-1+(4-2*t)*t};
+    cMo();
+    An.tween(a,b,n,easeFns[easeId]);
+    T.selFrames.clear();
+  }
+  function about(){sMo(`<h3>Imagus v10</h3><p style="font-size:10px;line-height:1.5;color:var(--txd)">Professional 2D Drawing & Animation<br>Brightness/Contrast · Desaturate · Levels · Stroke<br>Radial gradient softness · Gaussian Blur/Smooth<br>Animated WebP + GIF export · Tween frames<br>Layer sync · Frame reorder · Import seq<br>Reference image · Magnifier · Axis lock<br>Transform+Rotate · Symmetry<br>256 Palette · Per-frame ms</p><div class="mb"><button class="bp" onclick="U.cMo()">OK</button></div>`);}
   function iEvt(){
     const a=C.area;
     a.addEventListener('mousedown',e=>{e.preventDefault();T.onDown(e);});
@@ -691,7 +773,7 @@ const U=(()=>{
     document.addEventListener('visibilitychange',()=>{if(document.hidden)T.resetStuck();});
   }
   function init(){bTB();iCol();lPal(PAL256);iEvt();uCol();uTopt();}
-  return{init,uCol,uTopt,bTB,lPal,palReset,palPNG,newFile,mkNew,imgSize,aRsz,crop,briCon,prevBriCon,applyBriCon,_adjCancel,desat,levels,prevLevels,applyLevels,stroke,prevStroke,applyStroke,gridCfg,applyGrid,resetGrid,checkerCfg,textDlg,aTxt,togTheme,togCvOnly,showKeys,apK,svKF,ldKF,pxCount,about,sMo,cMo};
+  return{init,uCol,uTopt,bTB,lPal,palReset,palPNG,newFile,mkNew,imgSize,aRsz,crop,briCon,prevBriCon,applyBriCon,_adjCancel,desat,levels,prevLevels,applyLevels,stroke,prevStroke,applyStroke,gridCfg,applyGrid,resetGrid,checkerCfg,textDlg,aTxt,tweenDlg,applyTween,togTheme,togCvOnly,showKeys,apK,svKF,ldKF,pxCount,about,sMo,cMo};
 })();
 
 /* ==== IO ==== */
