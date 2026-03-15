@@ -101,7 +101,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
   pointer-events:none; /* a imagem não bloqueia desenho */
   image-rendering:auto;
 }
-
 ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:var(--bg0)}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
 </style>
 </head>
@@ -125,7 +124,10 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
       <div onclick="C.flipC('h')">Flip H</div><div onclick="C.flipC('v')">Flip V</div><div class="sep"></div>
       <div onclick="C.rotC(180)">Rotate 180°</div><div onclick="C.rotC(90)">Rotate 90° CW</div><div onclick="C.rotC(-90)">Rotate 90° CCW</div>
       <div onclick="T.startFreeRot()">Free Rotate</div><div class="sep"></div>
-      <div onclick="U.imgSize()">Image Size</div><div onclick="U.crop()">Crop to Selection</div>
+      <div onclick="U.imgSize()">Image Size</div><div onclick="U.crop()">Crop to Selection</div><div class="sep"></div>
+      <div onclick="U.briCon()">Brightness/Contrast</div>
+      <div onclick="U.desat()">Desaturate</div>
+      <div onclick="U.levels()">Levels</div>
     </div></div>
     <div class="mi">Brush<div class="md">
       <div onclick="T.flipCB('h')">Flip Brush H</div><div onclick="T.flipCB('v')">Flip Brush V</div>
@@ -178,7 +180,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
 <div id="mr"></div>
 <div id="refp" style="display:none"><div class="rh" id="refhdr"><span>Ref</span><input type="range" id="refop" min="5" max="100" value="50" title="Opacity" style="width:44px"><input type="range" id="refsz" min="10" max="400" value="100" title="Size%" style="width:44px"><button onclick="Ref.close()">✕</button></div><img id="refimg"></div>
 <script>
-/* IMAGUS v9 — History=Hi (avoids H collision) */
+/* IMAGUS v10 — History=Hi (avoids H collision) */
 const SEL_TOOLS=['rect-select','freehand-select','magic-wand','brush-select'];
 const PAL256=(()=>{const c=[];for(let r=0;r<6;r++)for(let g=0;g<6;g++)for(let b=0;b<6;b++)c.push('#'+[r*51,g*51,b*51].map(v=>v.toString(16).padStart(2,'0')).join(''));for(let i=0;i<40;i++){const v=Math.round(i*255/39);c.push('#'+v.toString(16).padStart(2,'0').repeat(3));}return c.slice(0,256)})();
 let KEYS={brush:'b',eraser:'e',airbrush:'a',bucket:'g',picker:'i',move:'v','rect-select':'m','magic-wand':'w',text:'t',line:'l',rect:'r',circle:'c',pan:'h',blur:'u',smooth:'s',gradient:'d',magnifier:'z',prevFrame:'1',nextFrame:'2',goToFrame:'3',play:'4',onionSkin:'5',swapColors:'x'};
@@ -503,7 +505,41 @@ const U=(()=>{
   function apK(){try{KEYS=JSON.parse(document.getElementById('keyjson').value);cMo();}catch(e2){alert('Invalid JSON');}}
   function svKF(){const b=new Blob([JSON.stringify(KEYS,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='imagus-keys.json';a.click();}
   function ldKF(){const inp=document.createElement('input');inp.type='file';inp.accept='.json';inp.onchange=async()=>{try{KEYS=JSON.parse(await inp.files[0].text());cMo();}catch(e2){alert('Invalid JSON');}};inp.click();}
-  function about(){sMo(`<h3>Imagus v9</h3><p style="font-size:10px;line-height:1.5;color:var(--txd)">Professional 2D Drawing & Animation<br>Improved Brush (radial gradient softness)<br>Professional Blur/Smooth (Gaussian kernel)<br>Animated WebP + GIF export<br>Layer sync across frames · Frame reorder<br>Reference ghost image · Magnifier<br>Transform+Rotate · Symmetry<br>256 Palette · Per-frame ms<br>Export: PNG, JPEG, WEBP, GIF</p><div class="mb"><button class="bp" onclick="U.cMo()">OK</button></div>`);}
+  /* Brightness / Contrast dialog */
+  function briCon(){sMo(`<h3>Brightness / Contrast</h3><label>Brightness<input type="range" id="adj_bri" min="-100" max="100" value="0" style="width:120px" oninput="this.nextElementSibling.textContent=this.value"><span>0</span></label><label>Contrast<input type="range" id="adj_con" min="-100" max="100" value="0" style="width:120px" oninput="this.nextElementSibling.textContent=this.value"><span>0</span></label><div class="mb"><button class="bsc" onclick="U.cMo()">Cancel</button><button class="bp" onclick="U.applyBriCon()">Apply</button></div>`);}
+  function applyBriCon(){
+    const la=T.activeLayer();if(!la){cMo();return;}Hi.push();
+    const bri=+document.getElementById('adj_bri').value,con=+document.getElementById('adj_con').value;
+    const id=la.ctx.getImageData(0,0,C.W,C.H),d=id.data;
+    const cf2=(259*(con+255))/(255*(259-con));
+    for(let i=0;i<d.length;i+=4){if(d[i+3]===0)continue;
+      for(let ch=0;ch<3;ch++){let v=d[i+ch]+bri;v=cf2*(v-128)+128;d[i+ch]=Math.max(0,Math.min(255,Math.round(v)));}
+    }la.ctx.putImageData(id,0,0);cMo();C.render();Ly.ui();
+  }
+  /* Desaturate (grayscale) */
+  function desat(){
+    const la=T.activeLayer();if(!la)return;Hi.push();
+    const id=la.ctx.getImageData(0,0,C.W,C.H),d=id.data;
+    for(let i=0;i<d.length;i+=4){if(d[i+3]===0)continue;
+      const g=Math.round(d[i]*0.299+d[i+1]*0.587+d[i+2]*0.114);
+      d[i]=d[i+1]=d[i+2]=g;}
+    la.ctx.putImageData(id,0,0);C.render();Ly.ui();
+  }
+  /* Levels dialog */
+  function levels(){sMo(`<h3>Levels</h3><p style="font-size:9px;color:var(--txd);margin-bottom:6px">Input: black/white points · Gamma · Output range</p><label>Black In<input type="range" id="lv_bi" min="0" max="254" value="0" style="width:100px" oninput="this.nextElementSibling.textContent=this.value"><span>0</span></label><label>White In<input type="range" id="lv_wi" min="1" max="255" value="255" style="width:100px" oninput="this.nextElementSibling.textContent=this.value"><span>255</span></label><label>Gamma<input type="range" id="lv_gm" min="10" max="300" value="100" style="width:100px" oninput="this.nextElementSibling.textContent=(this.value/100).toFixed(2)"><span>1.00</span></label><label>Out Black<input type="range" id="lv_ob" min="0" max="254" value="0" style="width:100px" oninput="this.nextElementSibling.textContent=this.value"><span>0</span></label><label>Out White<input type="range" id="lv_ow" min="1" max="255" value="255" style="width:100px" oninput="this.nextElementSibling.textContent=this.value"><span>255</span></label><div class="mb"><button class="bsc" onclick="U.cMo()">Cancel</button><button class="bp" onclick="U.applyLevels()">Apply</button></div>`);}
+  function applyLevels(){
+    const la=T.activeLayer();if(!la){cMo();return;}Hi.push();
+    const bi=+document.getElementById('lv_bi').value,wi=Math.max(bi+1,+document.getElementById('lv_wi').value);
+    const gm=(+document.getElementById('lv_gm').value)/100;
+    const ob=+document.getElementById('lv_ob').value,ow=+document.getElementById('lv_ow').value;
+    const id=la.ctx.getImageData(0,0,C.W,C.H),d=id.data;
+    const lut=new Uint8Array(256);
+    for(let i=0;i<256;i++){let v=(i-bi)/(wi-bi);v=Math.max(0,Math.min(1,v));
+      v=Math.pow(v,1/gm);lut[i]=Math.max(0,Math.min(255,Math.round(ob+v*(ow-ob))));}
+    for(let i=0;i<d.length;i+=4){if(d[i+3]===0)continue;d[i]=lut[d[i]];d[i+1]=lut[d[i+1]];d[i+2]=lut[d[i+2]];}
+    la.ctx.putImageData(id,0,0);cMo();C.render();Ly.ui();
+  }
+  function about(){sMo(`<h3>Imagus v10</h3><p style="font-size:10px;line-height:1.5;color:var(--txd)">Professional 2D Drawing & Animation<br>Brightness/Contrast · Desaturate · Levels<br>Radial gradient softness · Gaussian Blur/Smooth<br>Animated WebP + GIF export<br>Layer sync · Frame reorder · Import seq<br>Reference image · Magnifier · Axis lock<br>Transform+Rotate · Symmetry<br>256 Palette · Per-frame ms</p><div class="mb"><button class="bp" onclick="U.cMo()">OK</button></div>`);}
   function iEvt(){
     const a=C.area;
     a.addEventListener('mousedown',e=>{e.preventDefault();T.onDown(e);});
@@ -536,7 +572,7 @@ const U=(()=>{
     document.addEventListener('keyup',e=>{if(e.key==='Control'&&T.ctrlPick){T.set(T.ctrlPick);T.ctrlPick=null;}if(e.key===' '){T.spaceDown=false;}});
   }
   function init(){bTB();iCol();lPal(PAL256);iEvt();uCol();uTopt();}
-  return{init,uCol,uTopt,bTB,lPal,palReset,palPNG,newFile,mkNew,imgSize,aRsz,crop,gridCfg,applyGrid,checkerCfg,textDlg,aTxt,togTheme,togCvOnly,showKeys,apK,svKF,ldKF,pxCount,about,sMo,cMo};
+  return{init,uCol,uTopt,bTB,lPal,palReset,palPNG,newFile,mkNew,imgSize,aRsz,crop,briCon,applyBriCon,desat,levels,applyLevels,gridCfg,applyGrid,checkerCfg,textDlg,aTxt,togTheme,togCvOnly,showKeys,apK,svKF,ldKF,pxCount,about,sMo,cMo};
 })();
 
 /* ==== IO ==== */
@@ -601,7 +637,7 @@ const IO=(()=>{
   function expGIF(){const fs=An.frames,data=fs.map(f=>({c:comp(f),d:f.duration})),w=C.W,h=C.H;bGIF(data,w,h).then(bl=>{const a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download='imagus.gif';a.click();URL.revokeObjectURL(a.href);});}
   async function bGIF(frames,w,h){const buf=[];const wr=(...x)=>buf.push(...x);const ws=s=>{for(let i=0;i<s.length;i++)buf.push(s.charCodeAt(i));};const w16=v=>{buf.push(v&0xff,(v>>8)&0xff);};ws('GIF89a');w16(w);w16(h);wr(0xf7,0,0);const pal=[];for(let r=0;r<6;r++)for(let g=0;g<6;g++)for(let b=0;b<6;b++)pal.push([r*51,g*51,b*51]);while(pal.length<256)pal.push([0,0,0]);for(const c of pal)wr(c[0],c[1],c[2]);wr(0x21,0xff,11);ws('NETSCAPE2.0');wr(3,1);w16(0);wr(0);function nr(r,g,b){let best=0,bd=1e9;for(let i=0;i<216;i++){const dr=pal[i][0]-r,dg=pal[i][1]-g,db=pal[i][2]-b,d=dr*dr+dg*dg+db*db;if(d<bd){bd=d;best=i;}}return best;}for(const fr of frames){const d=fr.c.getContext('2d').getImageData(0,0,w,h).data,dl=fr.d||100;wr(0x21,0xf9,4,0x04);w16(Math.max(2,Math.round(dl/10)));wr(0,0);wr(0x2c);w16(0);w16(0);w16(w);w16(h);wr(0);const mn=8;wr(mn);const px=[];for(let i=0;i<d.length;i+=4)px.push(nr(d[i],d[i+1],d[i+2]));const cp=lzw(mn,px);let o=0;while(o<cp.length){const ch2=Math.min(255,cp.length-o);wr(ch2);for(let i=0;i<ch2;i++)buf.push(cp[o+i]);o+=ch2;}wr(0);}wr(0x3b);return new Blob([new Uint8Array(buf)],{type:'image/gif'});}
   function lzw(mn,px){const cc=1<<mn,ei=cc+1;let cs=mn+1,nc=ei+1;const tb=new Map();for(let i=0;i<cc;i++)tb.set(''+i,i);let bits=0,bc=0;const out=[];function wb(c,s){bits|=c<<bc;bc+=s;while(bc>=8){out.push(bits&0xff);bits>>=8;bc-=8;}}wb(cc,cs);let cr=''+px[0];for(let i=1;i<px.length;i++){const nx=cr+','+px[i];if(tb.has(nx))cr=nx;else{wb(tb.get(cr),cs);if(nc<4096)tb.set(nx,nc++);if(nc>(1<<cs)&&cs<12)cs++;cr=''+px[i];}}wb(tb.get(cr),cs);wb(ei,cs);if(bc>0)out.push(bits&0xff);return out;}
-  function save(){const pr={v:9,app:'imagus',w:C.W,h:C.H,bg:C.bg,pc:C.pc,sc:C.sc,cf:An.cf,frames:An.frames.map(f=>({al:f.activeLayer,dur:f.duration,layers:f.layers.map(ly=>({n:ly.name,o:ly.opacity,v:ly.visible,k:ly.locked,d:ly.canvas.toDataURL('image/png')}))}))};const bl=new Blob([JSON.stringify(pr)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download='project.imagus';a.click();URL.revokeObjectURL(a.href);}
+  function save(){const pr={v:10,app:'imagus',w:C.W,h:C.H,bg:C.bg,pc:C.pc,sc:C.sc,cf:An.cf,frames:An.frames.map(f=>({al:f.activeLayer,dur:f.duration,layers:f.layers.map(ly=>({n:ly.name,o:ly.opacity,v:ly.visible,k:ly.locked,d:ly.canvas.toDataURL('image/png')}))}))};const bl=new Blob([JSON.stringify(pr)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(bl);a.download='project.imagus';a.click();URL.revokeObjectURL(a.href);}
   function openImg(){const inp=document.createElement('input');inp.type='file';inp.accept='image/jpeg,image/png,image/gif,image/webp';inp.onchange=()=>{const f=inp.files[0];if(!f)return;const img=new Image();img.onload=()=>{C.init(img.width,img.height,'transparent');An.init();An.frames[0].layers[0].ctx.drawImage(img,0,0);requestAnimationFrame(()=>{C.zFit();Ly.ui();U.uCol();});};img.src=URL.createObjectURL(f);};inp.click();}
   /* Import multiple images as timeline frames */
   function importSeq(){
