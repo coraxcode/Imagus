@@ -101,6 +101,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
   pointer-events:none; /* a imagem não bloqueia desenho */
   image-rendering:auto;
 }
+
 ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:var(--bg0)}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
 </style>
 </head>
@@ -128,6 +129,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
       <div onclick="U.briCon()">Brightness/Contrast</div>
       <div onclick="U.desat()">Desaturate</div>
       <div onclick="U.levels()">Levels</div>
+      <div onclick="U.stroke()">Stroke</div>
     </div></div>
     <div class="mi">Brush<div class="md">
       <div onclick="T.flipCB('h')">Flip Brush H</div><div onclick="T.flipCB('v')">Flip Brush V</div>
@@ -487,7 +489,7 @@ const U=(()=>{
   function palReset(){lPal(PAL256);}
   function palPNG(){const inp=document.createElement('input');inp.type='file';inp.accept='image/png';inp.onchange=()=>{const f=inp.files[0];if(!f)return;const img=new Image();img.onload=()=>{const c2=document.createElement('canvas');c2.width=img.width;c2.height=img.height;const cx=c2.getContext('2d');cx.drawImage(img,0,0);const d=cx.getImageData(0,0,c2.width,c2.height).data,colors=new Set();for(let i=0;i<d.length;i+=4){if(d[i+3]<128)continue;colors.add('#'+[d[i],d[i+1],d[i+2]].map(v=>v.toString(16).padStart(2,'0')).join(''));}if(colors.size>0)lPal([...colors].slice(0,512));};img.src=URL.createObjectURL(f);};inp.click();}
   function sMo(h){document.getElementById('mr').innerHTML=`<div class="mov" onclick="if(event.target===this)U.cMo()"><div class="mo">${h}</div></div>`;}
-  function cMo(){document.getElementById('mr').innerHTML='';}
+  function cMo(){if(_adjBackup){_adjRestore();_adjBackup=null;}document.getElementById('mr').innerHTML='';}
   function newFile(){sMo(`<h3>New</h3><label>Width<input type="number" id="nw" value="320" min="1" max="4096"></label><label>Height<input type="number" id="nh" value="240" min="1" max="4096"></label><label>Bg<select id="nbg"><option value="transparent">Transparent</option><option value="white">White</option></select></label><div class="mb"><button class="bsc" onclick="U.cMo()">Cancel</button><button class="bp" onclick="U.mkNew()">Create</button></div>`);}
   function mkNew(){const w=+document.getElementById('nw').value||320,h=+document.getElementById('nh').value||240,b2=document.getElementById('nbg').value;cMo();Hi.clear();C.init(w,h,b2);An.init();if(b2==='white'){An.frames[0].layers[0].ctx.fillStyle='#fff';An.frames[0].layers[0].ctx.fillRect(0,0,w,h);}requestAnimationFrame(()=>{C.zFit();Ly.ui();uCol();});}
   function imgSize(){sMo(`<h3>Size</h3><label>W<input type="number" id="iw" value="${C.W}" min="1" max="8192"></label><label>H<input type="number" id="ih" value="${C.H}" min="1" max="8192"></label><div class="mb"><button class="bsc" onclick="U.cMo()">Cancel</button><button class="bp" onclick="U.aRsz()">Apply</button></div>`);}
@@ -505,16 +507,36 @@ const U=(()=>{
   function apK(){try{KEYS=JSON.parse(document.getElementById('keyjson').value);cMo();}catch(e2){alert('Invalid JSON');}}
   function svKF(){const b=new Blob([JSON.stringify(KEYS,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='imagus-keys.json';a.click();}
   function ldKF(){const inp=document.createElement('input');inp.type='file';inp.accept='.json';inp.onchange=async()=>{try{KEYS=JSON.parse(await inp.files[0].text());cMo();}catch(e2){alert('Invalid JSON');}};inp.click();}
-  /* Brightness / Contrast dialog */
-  function briCon(){sMo(`<h3>Brightness / Contrast</h3><label>Brightness<input type="range" id="adj_bri" min="-100" max="100" value="0" style="width:120px" oninput="this.nextElementSibling.textContent=this.value"><span>0</span></label><label>Contrast<input type="range" id="adj_con" min="-100" max="100" value="0" style="width:120px" oninput="this.nextElementSibling.textContent=this.value"><span>0</span></label><div class="mb"><button class="bsc" onclick="U.cMo()">Cancel</button><button class="bp" onclick="U.applyBriCon()">Apply</button></div>`);}
-  function applyBriCon(){
-    const la=T.activeLayer();if(!la){cMo();return;}Hi.push();
+  /* === Adjustment backup for live preview === */
+  let _adjBackup=null;
+  function _adjSave(){const la=T.activeLayer();if(!la)return null;_adjBackup=la.ctx.getImageData(0,0,C.W,C.H);return la;}
+  function _adjRestore(){const la=T.activeLayer();if(!la||!_adjBackup)return;la.ctx.putImageData(_adjBackup,0,0);C.render();}
+  function _adjCancel(){_adjRestore();_adjBackup=null;cMo();}
+  /* Brightness / Contrast with LIVE PREVIEW */
+  function briCon(){
+    if(!_adjSave())return;
+    sMo(`<h3>Brightness / Contrast</h3><label>Brightness<input type="range" id="adj_bri" min="-100" max="100" value="0" style="width:120px" oninput="this.nextElementSibling.textContent=this.value;U.prevBriCon()"><span>0</span></label><label>Contrast<input type="range" id="adj_con" min="-100" max="100" value="0" style="width:120px" oninput="this.nextElementSibling.textContent=this.value;U.prevBriCon()"><span>0</span></label><div class="mb"><button class="bsc" onclick="U._adjCancel()">Cancel</button><button class="bp" onclick="U.applyBriCon()">Apply</button></div>`);
+  }
+  function prevBriCon(){
+    const la=T.activeLayer();if(!la||!_adjBackup)return;
     const bri=+document.getElementById('adj_bri').value,con=+document.getElementById('adj_con').value;
-    const id=la.ctx.getImageData(0,0,C.W,C.H),d=id.data;
+    const src=_adjBackup.data,id=la.ctx.createImageData(C.W,C.H),d=id.data;
     const cf2=(259*(con+255))/(255*(259-con));
-    for(let i=0;i<d.length;i+=4){if(d[i+3]===0)continue;
-      for(let ch=0;ch<3;ch++){let v=d[i+ch]+bri;v=cf2*(v-128)+128;d[i+ch]=Math.max(0,Math.min(255,Math.round(v)));}
-    }la.ctx.putImageData(id,0,0);cMo();C.render();Ly.ui();
+    for(let i=0;i<src.length;i+=4){d[i+3]=src[i+3];if(src[i+3]===0){d[i]=d[i+1]=d[i+2]=0;continue;}
+      for(let ch=0;ch<3;ch++){let v=src[i+ch]+bri;v=cf2*(v-128)+128;d[i+ch]=Math.max(0,Math.min(255,Math.round(v)));}}
+    la.ctx.putImageData(id,0,0);C.render();
+  }
+  function applyBriCon(){
+    const la=T.activeLayer();if(!la){_adjBackup=null;cMo();return;}
+    /* Restore original so Hi.push captures it for undo */
+    la.ctx.putImageData(_adjBackup,0,0);Hi.push();
+    /* Reapply from backup */
+    const bri=+document.getElementById('adj_bri').value,con=+document.getElementById('adj_con').value;
+    const src=_adjBackup.data,id=la.ctx.createImageData(C.W,C.H),d=id.data;
+    const cf2=(259*(con+255))/(255*(259-con));
+    for(let i=0;i<src.length;i+=4){d[i+3]=src[i+3];if(src[i+3]===0){d[i]=d[i+1]=d[i+2]=0;continue;}
+      for(let ch=0;ch<3;ch++){let v=src[i+ch]+bri;v=cf2*(v-128)+128;d[i+ch]=Math.max(0,Math.min(255,Math.round(v)));}}
+    la.ctx.putImageData(id,0,0);_adjBackup=null;cMo();C.render();Ly.ui();
   }
   /* Desaturate (grayscale) */
   function desat(){
@@ -525,21 +547,121 @@ const U=(()=>{
       d[i]=d[i+1]=d[i+2]=g;}
     la.ctx.putImageData(id,0,0);C.render();Ly.ui();
   }
-  /* Levels dialog */
-  function levels(){sMo(`<h3>Levels</h3><p style="font-size:9px;color:var(--txd);margin-bottom:6px">Input: black/white points · Gamma · Output range</p><label>Black In<input type="range" id="lv_bi" min="0" max="254" value="0" style="width:100px" oninput="this.nextElementSibling.textContent=this.value"><span>0</span></label><label>White In<input type="range" id="lv_wi" min="1" max="255" value="255" style="width:100px" oninput="this.nextElementSibling.textContent=this.value"><span>255</span></label><label>Gamma<input type="range" id="lv_gm" min="10" max="300" value="100" style="width:100px" oninput="this.nextElementSibling.textContent=(this.value/100).toFixed(2)"><span>1.00</span></label><label>Out Black<input type="range" id="lv_ob" min="0" max="254" value="0" style="width:100px" oninput="this.nextElementSibling.textContent=this.value"><span>0</span></label><label>Out White<input type="range" id="lv_ow" min="1" max="255" value="255" style="width:100px" oninput="this.nextElementSibling.textContent=this.value"><span>255</span></label><div class="mb"><button class="bsc" onclick="U.cMo()">Cancel</button><button class="bp" onclick="U.applyLevels()">Apply</button></div>`);}
-  function applyLevels(){
-    const la=T.activeLayer();if(!la){cMo();return;}Hi.push();
+  /* Levels with LIVE PREVIEW */
+  function levels(){
+    if(!_adjSave())return;
+    sMo(`<h3>Levels</h3><p style="font-size:9px;color:var(--txd);margin-bottom:6px">Drag sliders for live preview</p><label>Black In<input type="range" id="lv_bi" min="0" max="254" value="0" style="width:100px" oninput="this.nextElementSibling.textContent=this.value;U.prevLevels()"><span>0</span></label><label>White In<input type="range" id="lv_wi" min="1" max="255" value="255" style="width:100px" oninput="this.nextElementSibling.textContent=this.value;U.prevLevels()"><span>255</span></label><label>Gamma<input type="range" id="lv_gm" min="10" max="300" value="100" style="width:100px" oninput="this.nextElementSibling.textContent=(this.value/100).toFixed(2);U.prevLevels()"><span>1.00</span></label><label>Out Black<input type="range" id="lv_ob" min="0" max="254" value="0" style="width:100px" oninput="this.nextElementSibling.textContent=this.value;U.prevLevels()"><span>0</span></label><label>Out White<input type="range" id="lv_ow" min="1" max="255" value="255" style="width:100px" oninput="this.nextElementSibling.textContent=this.value;U.prevLevels()"><span>255</span></label><div class="mb"><button class="bsc" onclick="U._adjCancel()">Cancel</button><button class="bp" onclick="U.applyLevels()">Apply</button></div>`);
+  }
+  function prevLevels(){
+    const la=T.activeLayer();if(!la||!_adjBackup)return;
     const bi=+document.getElementById('lv_bi').value,wi=Math.max(bi+1,+document.getElementById('lv_wi').value);
     const gm=(+document.getElementById('lv_gm').value)/100;
     const ob=+document.getElementById('lv_ob').value,ow=+document.getElementById('lv_ow').value;
-    const id=la.ctx.getImageData(0,0,C.W,C.H),d=id.data;
     const lut=new Uint8Array(256);
-    for(let i=0;i<256;i++){let v=(i-bi)/(wi-bi);v=Math.max(0,Math.min(1,v));
-      v=Math.pow(v,1/gm);lut[i]=Math.max(0,Math.min(255,Math.round(ob+v*(ow-ob))));}
-    for(let i=0;i<d.length;i+=4){if(d[i+3]===0)continue;d[i]=lut[d[i]];d[i+1]=lut[d[i+1]];d[i+2]=lut[d[i+2]];}
-    la.ctx.putImageData(id,0,0);cMo();C.render();Ly.ui();
+    for(let i=0;i<256;i++){let v=(i-bi)/(wi-bi);v=Math.max(0,Math.min(1,v));v=Math.pow(v,1/gm);lut[i]=Math.max(0,Math.min(255,Math.round(ob+v*(ow-ob))));}
+    const src=_adjBackup.data,id=la.ctx.createImageData(C.W,C.H),d=id.data;
+    for(let i=0;i<src.length;i+=4){d[i+3]=src[i+3];if(src[i+3]===0){d[i]=d[i+1]=d[i+2]=0;continue;}d[i]=lut[src[i]];d[i+1]=lut[src[i+1]];d[i+2]=lut[src[i+2]];}
+    la.ctx.putImageData(id,0,0);C.render();
   }
-  function about(){sMo(`<h3>Imagus v10</h3><p style="font-size:10px;line-height:1.5;color:var(--txd)">Professional 2D Drawing & Animation<br>Brightness/Contrast · Desaturate · Levels<br>Radial gradient softness · Gaussian Blur/Smooth<br>Animated WebP + GIF export<br>Layer sync · Frame reorder · Import seq<br>Reference image · Magnifier · Axis lock<br>Transform+Rotate · Symmetry<br>256 Palette · Per-frame ms</p><div class="mb"><button class="bp" onclick="U.cMo()">OK</button></div>`);}
+  function applyLevels(){
+    const la=T.activeLayer();if(!la){_adjBackup=null;cMo();return;}
+    /* Restore original so Hi.push captures it for undo */
+    la.ctx.putImageData(_adjBackup,0,0);Hi.push();
+    /* Reapply from backup */
+    const bi=+document.getElementById('lv_bi').value,wi=Math.max(bi+1,+document.getElementById('lv_wi').value);
+    const gm=(+document.getElementById('lv_gm').value)/100;
+    const ob=+document.getElementById('lv_ob').value,ow=+document.getElementById('lv_ow').value;
+    const lut=new Uint8Array(256);
+    for(let i=0;i<256;i++){let v=(i-bi)/(wi-bi);v=Math.max(0,Math.min(1,v));v=Math.pow(v,1/gm);lut[i]=Math.max(0,Math.min(255,Math.round(ob+v*(ow-ob))));}
+    const src=_adjBackup.data,id=la.ctx.createImageData(C.W,C.H),d=id.data;
+    for(let i=0;i<src.length;i+=4){d[i+3]=src[i+3];if(src[i+3]===0){d[i]=d[i+1]=d[i+2]=0;continue;}d[i]=lut[src[i]];d[i+1]=lut[src[i+1]];d[i+2]=lut[src[i+2]];}
+    la.ctx.putImageData(id,0,0);_adjBackup=null;cMo();C.render();Ly.ui();
+  }
+  /* Stroke (Outline) with LIVE PREVIEW */
+  function stroke(){
+    if(!_adjSave())return;
+    sMo(`<h3>Stroke</h3><label>Type<select id="sk_tp" onchange="U.prevStroke()"><option value="outer">Outer</option><option value="inner">Inner</option></select></label><label>Width<input type="range" id="sk_w" min="1" max="32" value="2" style="width:100px" oninput="this.nextElementSibling.textContent=this.value;U.prevStroke()"><span>2</span></label><label>Color<input type="color" id="sk_c" value="${C.pc}" style="width:40px;height:20px;padding:0;border:1px solid var(--bd)" onchange="U.prevStroke()"></label><label>Opacity %<input type="range" id="sk_op" min="1" max="100" value="100" style="width:80px" oninput="this.nextElementSibling.textContent=this.value;U.prevStroke()"><span>100</span></label><div class="mb"><button class="bsc" onclick="U._adjCancel()">Cancel</button><button class="bp" onclick="U.applyStroke()">Apply</button></div>`);
+    setTimeout(()=>prevStroke(),50);
+  }
+  function _buildDistMap(alpha,w,h,inside,maxDist){
+    /* Distance to boundary; inside=true → distance from opaque edge inward */
+    const dist=new Float32Array(w*h);dist.fill(1e9);
+    const q=[];
+    for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+      const i=y*w+x,op=alpha[i]>0;
+      if(inside?!op:op)continue;
+      let boundary=false;
+      if(x>0&&(alpha[i-1]>0)!==op)boundary=true;
+      if(x<w-1&&(alpha[i+1]>0)!==op)boundary=true;
+      if(y>0&&(alpha[i-w]>0)!==op)boundary=true;
+      if(y<h-1&&(alpha[i+w]>0)!==op)boundary=true;
+      if(boundary){dist[i]=0;q.push(i);}
+    }
+    let qi=0;
+    const nb=[[-1,0,1],[1,0,1],[0,-1,1],[0,1,1],[-1,-1,1.414],[1,-1,1.414],[-1,1,1.414],[1,1,1.414]];
+    while(qi<q.length){
+      const ci=q[qi++],cx=ci%w,cy=(ci-cx)/w,cd=dist[ci];
+      if(cd>=maxDist)continue;
+      for(const[dx,dy,cost] of nb){
+        const nx=cx+dx,ny=cy+dy;
+        if(nx<0||ny<0||nx>=w||ny>=h)continue;
+        const ni=ny*w+nx,nd=cd+cost;
+        if(nd>=dist[ni])continue;
+        const op2=alpha[ni]>0;
+        if(inside?!op2:op2)continue;
+        dist[ni]=nd;q.push(ni);
+      }
+    }
+    return dist;
+  }
+  function _renderStroke(la,backup,type,width,color,opacity){
+    const w=C.W,h=C.H,src=backup.data;
+    /* Build alpha mask */
+    const alpha=new Uint8Array(w*h);
+    for(let i=0;i<alpha.length;i++)alpha[i]=src[i*4+3];
+    /* Build distance map */
+    const dist=_buildDistMap(alpha,w,h,type==='inner',width+1);
+    /* Parse color */
+    const cr=parseInt(color.slice(1,3),16),cg=parseInt(color.slice(3,5),16),cb=parseInt(color.slice(5,7),16);
+    const opa=opacity/100;
+    /* Compose: start from backup, add stroke */
+    const id=la.ctx.createImageData(w,h),d=id.data;
+    for(let i=0;i<w*h;i++){
+      const si=i*4;
+      d[si]=src[si];d[si+1]=src[si+1];d[si+2]=src[si+2];d[si+3]=src[si+3];
+      if(dist[i]<width){
+        const blend=Math.min(1,(width-dist[i]))*opa;
+        if(type==='outer'){
+          /* Outer: draw on transparent areas */
+          if(src[si+3]===0){d[si]=cr;d[si+1]=cg;d[si+2]=cb;d[si+3]=Math.round(blend*255);}
+          else{d[si]=Math.round(src[si]*(1-blend)+cr*blend);d[si+1]=Math.round(src[si+1]*(1-blend)+cg*blend);d[si+2]=Math.round(src[si+2]*(1-blend)+cb*blend);d[si+3]=Math.max(src[si+3],Math.round(blend*255));}
+        }else{
+          /* Inner: overlay on opaque edge areas */
+          if(src[si+3]>0){d[si]=Math.round(src[si]*(1-blend)+cr*blend);d[si+1]=Math.round(src[si+1]*(1-blend)+cg*blend);d[si+2]=Math.round(src[si+2]*(1-blend)+cb*blend);}
+        }
+      }
+    }
+    la.ctx.putImageData(id,0,0);C.render();
+  }
+  function prevStroke(){
+    const la=T.activeLayer();if(!la||!_adjBackup)return;
+    const type=document.getElementById('sk_tp').value;
+    const width=+document.getElementById('sk_w').value;
+    const color=document.getElementById('sk_c').value;
+    const opacity=+document.getElementById('sk_op').value;
+    _renderStroke(la,_adjBackup,type,width,color,opacity);
+  }
+  function applyStroke(){
+    const la=T.activeLayer();if(!la){_adjBackup=null;cMo();return;}
+    la.ctx.putImageData(_adjBackup,0,0);Hi.push();
+    const type=document.getElementById('sk_tp').value;
+    const width=+document.getElementById('sk_w').value;
+    const color=document.getElementById('sk_c').value;
+    const opacity=+document.getElementById('sk_op').value;
+    _renderStroke(la,_adjBackup,type,width,color,opacity);
+    _adjBackup=null;cMo();Ly.ui();
+  }
+  function about(){sMo(`<h3>Imagus v10</h3><p style="font-size:10px;line-height:1.5;color:var(--txd)">Professional 2D Drawing & Animation<br>Brightness/Contrast · Desaturate · Levels · Stroke<br>Radial gradient softness · Gaussian Blur/Smooth<br>Animated WebP + GIF export<br>Layer sync · Frame reorder · Import seq<br>Reference image · Magnifier · Axis lock<br>Transform+Rotate · Symmetry<br>256 Palette · Per-frame ms</p><div class="mb"><button class="bp" onclick="U.cMo()">OK</button></div>`);}
   function iEvt(){
     const a=C.area;
     a.addEventListener('mousedown',e=>{e.preventDefault();T.onDown(e);});
@@ -572,7 +694,7 @@ const U=(()=>{
     document.addEventListener('keyup',e=>{if(e.key==='Control'&&T.ctrlPick){T.set(T.ctrlPick);T.ctrlPick=null;}if(e.key===' '){T.spaceDown=false;}});
   }
   function init(){bTB();iCol();lPal(PAL256);iEvt();uCol();uTopt();}
-  return{init,uCol,uTopt,bTB,lPal,palReset,palPNG,newFile,mkNew,imgSize,aRsz,crop,briCon,applyBriCon,desat,levels,applyLevels,gridCfg,applyGrid,checkerCfg,textDlg,aTxt,togTheme,togCvOnly,showKeys,apK,svKF,ldKF,pxCount,about,sMo,cMo};
+  return{init,uCol,uTopt,bTB,lPal,palReset,palPNG,newFile,mkNew,imgSize,aRsz,crop,briCon,prevBriCon,applyBriCon,_adjCancel,desat,levels,prevLevels,applyLevels,stroke,prevStroke,applyStroke,gridCfg,applyGrid,checkerCfg,textDlg,aTxt,togTheme,togCvOnly,showKeys,apK,svKF,ldKF,pxCount,about,sMo,cMo};
 })();
 
 /* ==== IO ==== */
