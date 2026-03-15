@@ -101,7 +101,6 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
   pointer-events:none; /* a imagem não bloqueia desenho */
   image-rendering:auto;
 }
-
 ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:var(--bg0)}::-webkit-scrollbar-thumb{background:var(--bd);border-radius:2px}
 </style>
 </head>
@@ -216,8 +215,8 @@ const C=(()=>{
     if(grid){const step=gsz;if(zm*step>=1.5){ox.save();ox.strokeStyle=gridColor;ox.globalAlpha=gridAlpha;ox.lineWidth=gridThick/zm;for(let xg=0;xg<=W;xg+=step){ox.beginPath();ox.moveTo(xg,0);ox.lineTo(xg,H);ox.stroke();}for(let yg=0;yg<=H;yg+=step){ox.beginPath();ox.moveTo(0,yg);ox.lineTo(W,yg);ox.stroke();}ox.restore();}}
     const gCol=getComputedStyle(document.documentElement).getPropertyValue('--guide').trim()||'#4488ff';
     ox.setLineDash([]);
-    if(T.symH){const sx=Math.round(W*symHP);ox.strokeStyle=gCol;ox.lineWidth=1.5/zm;ox.beginPath();ox.moveTo(sx,0);ox.lineTo(sx,H);ox.stroke();}
-    if(T.symV){const sy=Math.round(H*symVP);ox.strokeStyle=gCol;ox.lineWidth=1.5/zm;ox.beginPath();ox.moveTo(0,sy);ox.lineTo(W,sy);ox.stroke();}
+    if(T.symH){const sx=W*symHP;ox.strokeStyle=gCol;ox.lineWidth=1.5/zm;ox.beginPath();ox.moveTo(sx,0);ox.lineTo(sx,H);ox.stroke();}
+    if(T.symV){const sy=H*symVP;ox.strokeStyle=gCol;ox.lineWidth=1.5/zm;ox.beginPath();ox.moveTo(0,sy);ox.lineTo(W,sy);ox.stroke();}
     if(guideH){ox.strokeStyle=gCol;ox.lineWidth=1/zm;ox.setLineDash([4/zm,4/zm]);ox.beginPath();ox.moveTo(0,Math.round(H*guideHY));ox.lineTo(W,Math.round(H*guideHY));ox.stroke();ox.setLineDash([]);}
     if(guideV){ox.strokeStyle=gCol;ox.lineWidth=1/zm;ox.setLineDash([4/zm,4/zm]);ox.beginPath();ox.moveTo(Math.round(W*guideVX),0);ox.lineTo(Math.round(W*guideVX),H);ox.stroke();ox.setLineDash([]);}
     T.drawSel(ox);
@@ -326,7 +325,7 @@ const T=(()=>{
   function flipCB(dir){if(!customBrush)return;const w=customBrush.width,h=customBrush.height,c2=document.createElement('canvas');c2.width=w;c2.height=h;const cx=c2.getContext('2d');cx.save();if(dir==='h'){cx.translate(w,0);cx.scale(-1,1);}else{cx.translate(0,h);cx.scale(1,-1);}cx.drawImage(customBrush,0,0);cx.restore();customBrush=c2;}
   function rotCB(deg){if(!customBrush)return;const w=customBrush.width,h=customBrush.height,nw=deg%180?h:w,nh=deg%180?w:h,c2=document.createElement('canvas');c2.width=nw;c2.height=nh;const cx=c2.getContext('2d');cx.save();cx.translate(nw/2,nh/2);cx.rotate(deg*Math.PI/180);cx.drawImage(customBrush,-w/2,-h/2);cx.restore();customBrush=c2;}
   function clearCB(){customBrush=null;}
-  function symDraw(ctx,fn,x,y){fn(ctx,x,y);const axisX=Math.round(C.W*C.symHP),axisY=Math.round(C.H*C.symVP);if(symH){fn(ctx,axisX+(axisX-x),y);}if(symV){fn(ctx,x,axisY+(axisY-y));}if(symH&&symV){fn(ctx,axisX+(axisX-x),axisY+(axisY-y));}}
+  function symDraw(ctx,fn,x,y){fn(ctx,x,y);const px=Math.floor(x),py=Math.floor(y);const axH=C.W*C.symHP,axV=C.H*C.symVP;const mx=Math.floor(2*axH-px-1),my=Math.floor(2*axV-py-1);if(symH){fn(ctx,mx,py);}if(symV){fn(ctx,px,my);}if(symH&&symV){fn(ctx,mx,my);}}
   function commitFloat(){if(!floating)return;const la=al();if(!la)return;Hi.push();const fw=floating.tw||floating.canvas.width,fh=floating.th||floating.canvas.height;la.ctx.save();la.ctx.translate(Math.round(floating.x)+fw/2,Math.round(floating.y)+fh/2);la.ctx.rotate(floating.rot||0);la.ctx.imageSmoothingEnabled=true;la.ctx.drawImage(floating.canvas,-fw/2,-fh/2,fw,fh);la.ctx.restore();la.ctx.imageSmoothingEnabled=false;floating=null;tfMode=false;sel=null;C.render();Ly.ui();}
   function floatFromSel(){const la=al();if(!la||!sel||sel.type!=='rect')return false;const sx=Math.max(0,Math.round(sel.x)),sy=Math.max(0,Math.round(sel.y));const sw=Math.min(Math.round(sel.w),C.W-sx),sh=Math.min(Math.round(sel.h),C.H-sy);if(sw<1||sh<1)return false;Hi.push();const fc=document.createElement('canvas');fc.width=sw;fc.height=sh;fc.getContext('2d').drawImage(la.canvas,sx,sy,sw,sh,0,0,sw,sh);la.ctx.clearRect(sx,sy,sw,sh);floating={canvas:fc,x:sx,y:sy,tw:sw,th:sh,rot:0};sel=null;C.render();return true;}
   function startFreeRot(){if(floating)return;if(!sel)sel={type:'rect',x:0,y:0,w:C.W,h:C.H};if(floatFromSel()){tfMode=true;C.render();U.uTopt();}}
