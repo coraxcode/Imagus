@@ -1353,36 +1353,76 @@ const T = (() => {
         C.render(); return;
       }
       if (mo.type === 'handle') {
-        const dx2 = pos.x - mo.ox, dy2 = pos.y - mo.oy, id2 = mo.id;
+      const dx2 = pos.x - mo.ox;
+      const dy2 = pos.y - mo.oy;
+      const id2 = mo.id;
+
+      if (e.shiftKey && (id2 === 'br' || id2 === 'tr' || id2 === 'bl' || id2 === 'tl')) {
+        const ratio = mo.ow / Math.max(1, mo.oh);
+        let nw, nh;
+
         if (id2 === 'br') {
-          floating.tw = Math.max(1, Math.round(mo.ow + dx2));
-          floating.th = Math.max(1, Math.round(mo.oh + dy2));
+          nw = Math.max(1, Math.round(mo.ow + dx2));
+          nh = Math.max(1, Math.round(nw / ratio));
+          floating.tw = nw;
+          floating.th = nh;
         } else if (id2 === 'tr') {
-          floating.tw = Math.max(1, Math.round(mo.ow + dx2));
-          floating.th = Math.max(1, Math.round(mo.oh - dy2));
-          floating.y = mo.ofy + dy2;
+          nw = Math.max(1, Math.round(mo.ow + dx2));
+          nh = Math.max(1, Math.round(nw / ratio));
+          floating.tw = nw;
+          floating.th = nh;
+          floating.y = Math.round(mo.ofy + (mo.oh - nh));
         } else if (id2 === 'bl') {
-          floating.tw = Math.max(1, Math.round(mo.ow - dx2));
-          floating.th = Math.max(1, Math.round(mo.oh + dy2));
-          floating.x = mo.ofx + dx2;
+          nw = Math.max(1, Math.round(mo.ow - dx2));
+          nh = Math.max(1, Math.round(nw / ratio));
+          floating.tw = nw;
+          floating.th = nh;
+          floating.x = Math.round(mo.ofx + (mo.ow - nw));
         } else if (id2 === 'tl') {
-          floating.tw = Math.max(1, Math.round(mo.ow - dx2));
-          floating.th = Math.max(1, Math.round(mo.oh - dy2));
-          floating.x = mo.ofx + dx2; floating.y = mo.ofy + dy2;
-        } else if (id2 === 'tc') {
-          floating.th = Math.max(1, Math.round(mo.oh - dy2));
-          floating.y = mo.ofy + dy2;
-        } else if (id2 === 'bc') {
-          floating.th = Math.max(1, Math.round(mo.oh + dy2));
-        } else if (id2 === 'ml') {
-          floating.tw = Math.max(1, Math.round(mo.ow - dx2));
-          floating.x = mo.ofx + dx2;
-        } else if (id2 === 'mr') {
-          floating.tw = Math.max(1, Math.round(mo.ow + dx2));
+          nw = Math.max(1, Math.round(mo.ow - dx2));
+          nh = Math.max(1, Math.round(nw / ratio));
+          floating.tw = nw;
+          floating.th = nh;
+          floating.x = Math.round(mo.ofx + (mo.ow - nw));
+          floating.y = Math.round(mo.ofy + (mo.oh - nh));
         }
-        C.render(); return;
+
+        C.render();
+        return;
       }
+
+      if (id2 === 'br') {
+        floating.tw = Math.max(1, Math.round(mo.ow + dx2));
+        floating.th = Math.max(1, Math.round(mo.oh + dy2));
+      } else if (id2 === 'tr') {
+        floating.tw = Math.max(1, Math.round(mo.ow + dx2));
+        floating.th = Math.max(1, Math.round(mo.oh - dy2));
+        floating.y = mo.ofy + dy2;
+      } else if (id2 === 'bl') {
+        floating.tw = Math.max(1, Math.round(mo.ow - dx2));
+        floating.th = Math.max(1, Math.round(mo.oh + dy2));
+        floating.x = mo.ofx + dx2;
+      } else if (id2 === 'tl') {
+        floating.tw = Math.max(1, Math.round(mo.ow - dx2));
+        floating.th = Math.max(1, Math.round(mo.oh - dy2));
+        floating.x = mo.ofx + dx2;
+        floating.y = mo.ofy + dy2;
+      } else if (id2 === 'tc') {
+        floating.th = Math.max(1, Math.round(mo.oh - dy2));
+        floating.y = mo.ofy + dy2;
+      } else if (id2 === 'bc') {
+        floating.th = Math.max(1, Math.round(mo.oh + dy2));
+      } else if (id2 === 'ml') {
+        floating.tw = Math.max(1, Math.round(mo.ow - dx2));
+        floating.x = mo.ofx + dx2;
+      } else if (id2 === 'mr') {
+        floating.tw = Math.max(1, Math.round(mo.ow + dx2));
+      }
+
+      C.render();
+      return;
     }
+   }
 
     if (cur === 'pan') {
       C.px += e.movementX; C.py += e.movementY; C.render(); lp = { ...pos }; return;
