@@ -1201,8 +1201,10 @@ const T = (() => {
 
     if (isMid || spaceDown) { mo = { pan: true }; return; }
 
-    const symHit = hitSymAxis(e.clientX, e.clientY);
-    if (symHit) { mo = { type: 'symaxis', axis: symHit }; return; }
+    if (e.altKey) {
+      const symHit = hitSymAxis(e.clientX, e.clientY);
+      if (symHit) { mo = { type: 'symaxis', axis: symHit }; return; }
+    }
 
     if (floating) {
       if (tfMode) {
@@ -1384,7 +1386,8 @@ const T = (() => {
     if (cur === 'pan') {
       C.px += e.movementX; C.py += e.movementY; C.render(); lp = { ...pos }; return;
     }
-    if (!la || la.locked) { lp = { ...pos }; return; }
+    const readOnly = ['picker', 'rect-select', 'freehand-select', 'magic-wand', 'brush-select'].includes(cur);
+    if (!la || (la.locked && !readOnly)) { lp = { ...pos }; return; }
 
     if (cur === 'brush') {
       if (ppx && bSz <= 1 && !customBrush) {
@@ -2158,7 +2161,7 @@ const U = (() => {
       let h = `<label>Sz<input type="range" min="1" max="64" value="${T.brushSize}" oninput="T.brushSize=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.brushSize}</span></label><label>Op<input type="range" min="1" max="100" value="${T.brushOpacity}" oninput="T.brushOpacity=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.brushOpacity}</span></label><label>Soft<input type="range" min="0" max="10" value="${T.hardness}" oninput="T.hardness=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.hardness}</span></label>`;
       if (t === 'brush') h += `<label>PP<input type="checkbox" ${T.pixelPerfect ? 'checked' : ''} onchange="T.pixelPerfect=this.checked"></label><label><select onchange="T.brushShape=this.value"><option value="circle"${T.brushShape === 'circle' ? ' selected' : ''}>●</option><option value="square"${T.brushShape === 'square' ? ' selected' : ''}>■</option></select></label>`;
       h += `<label>SymH<input type="checkbox" ${T.symH ? 'checked' : ''} onchange="T.symH=this.checked"></label><label>SymV<input type="checkbox" ${T.symV ? 'checked' : ''} onchange="T.symV=this.checked"></label><label>45°<input type="checkbox" ${T.sym45 ? 'checked' : ''} onchange="T.sym45=this.checked"></label><label>-45°<input type="checkbox" ${T.sym45n ? 'checked' : ''} onchange="T.sym45n=this.checked"></label>`;
-      if (T.symH || T.symV) h += `<label><button class="bsc" style="padding:0 4px;font-size:8px" onclick="C.symHP=0.5;C.symVP=0.5;C.render();U.uTopt()">↻</button></label>`;
+      if (T.symH || T.symV) h += `<label><button class="bsc" style="padding:0 4px;font-size:8px" onclick="C.symHP=0.5;C.symVP=0.5;C.render();U.uTopt()">↻</button></label><label style="color:var(--txd)">Alt+drag=move axis</label>`;
       h += `<label>LkH<input type="checkbox" ${T.lockX ? 'checked' : ''} onchange="T.lockX=this.checked;U.uTopt()"></label><label>LkV<input type="checkbox" ${T.lockY ? 'checked' : ''} onchange="T.lockY=this.checked;U.uTopt()"></label>`;
       if (T.customBrush) h += `<label style="color:var(--acc)">⬦Cust</label>`;
       b.innerHTML = h;
