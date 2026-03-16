@@ -250,6 +250,25 @@ const BlobURLs = (() => {
   return { create, revoke, revokeAll };
 })();
 
+/* ===== LAYER LOCK GUARD ===== */
+let _lockMsgTimer = 0;
+
+function _showLockMsg() {
+  const ci = document.getElementById('ci');
+  ci.textContent = '\u{1F512} Layer locked';
+  ci.style.color = 'var(--acc)';
+  clearTimeout(_lockMsgTimer);
+  _lockMsgTimer = setTimeout(() => { ci.style.color = ''; C.render(); }, 1200);
+}
+
+function _lg(fn) {
+  return function(...args) {
+    const la = T.activeLayer();
+    if (la && la.locked) { _showLockMsg(); return; }
+    return fn.apply(this, args);
+  };
+}
+
 /* ===== CORE CANVAS ===== */
 const C = (() => {
   let W = 320, H = 240, zm = 1, panX = 0, panY = 0;
@@ -559,6 +578,7 @@ const C = (() => {
     const sel = T.selection;
     const la = T.activeLayer();
     if (sel && sel.type === 'rect' && la && sel.w > 0 && sel.h > 0) {
+      if (la.locked) { _showLockMsg(); return; }
       const sx = Math.max(0, Math.round(sel.x)), sy = Math.max(0, Math.round(sel.y));
       const sw = Math.min(Math.round(sel.w), W - sx), sh = Math.min(Math.round(sel.h), H - sy);
       if (sw > 0 && sh > 0) {
@@ -597,6 +617,7 @@ const C = (() => {
     const la = T.activeLayer();
     const ad = Math.abs(deg);
     if (sel && sel.type === 'rect' && la && sel.w > 0 && sel.h > 0) {
+      if (la.locked) { _showLockMsg(); return; }
       const sx = Math.max(0, Math.round(sel.x)), sy = Math.max(0, Math.round(sel.y));
       const sw = Math.min(Math.round(sel.w), W - sx), sh = Math.min(Math.round(sel.h), H - sy);
       if (sw > 0 && sh > 0) {
@@ -1620,7 +1641,7 @@ const T = (() => {
     get spaceDown() { return spaceDown; }, set spaceDown(v) { spaceDown = v; },
     get ctrlPick() { return ctrlPick; }, set ctrlPick(v) { ctrlPick = v; },
     onDown, onMove, onUp, drawSel, set, setLight, resetStuck,
-    copySel, cutSel, pasteSel, delSel, clrSel, selAll,
+    copySel, cutSel: _lg(cutSel), pasteSel, delSel: _lg(delSel), clrSel, selAll,
     activeLayer: al, grabBrush, flipCB, rotCB, clearCB,
     commitFloat, toggleTf, isSel, startFreeRot
   };
@@ -1777,16 +1798,21 @@ const Ly = (() => {
       th.getContext('2d').drawImage(ly.canvas, 0, 0, 28, 16);
       const nm = document.createElement('span');
       nm.className = 'ln';
-      nm.textContent = ly.name + (ly.locked ? ' 🔒' : '');
+      nm.textContent = ly.name;
       nm.ondblclick = () => {
         const n = prompt('Name:', ly.name);
         if (n) { ly.name = n; ui(); }
       };
+      const lk = document.createElement('span');
+      lk.className = 'lv';
+      lk.textContent = ly.locked ? '\u{1F512}' : '\u{1F513}';
+      lk.title = ly.locked ? 'Unlock layer' : 'Lock layer';
+      lk.onclick = ev => { ev.stopPropagation(); ly.locked = !ly.locked; ui(); };
       const vs = document.createElement('span');
       vs.className = 'lv';
       vs.textContent = ly.visible ? '👁' : '—';
       vs.onclick = ev => { ev.stopPropagation(); ly.visible = !ly.visible; ui(); C.render(); };
-      div.append(th, nm, vs);
+      div.append(th, nm, lk, vs);
       div.onclick = () => { f.activeLayer = i; ui(); sOp(); };
       list.append(div);
     }
@@ -2443,8 +2469,8 @@ const U = (() => {
 
   function _adjSv() {
     const la = T.activeLayer(); if (!la) return null;
+    if (la.locked) { alert('Layer is locked.'); return null; }
     _adjBk = la.ctx.getImageData(0, 0, C.W, C.H);
-    return la;
   }
 
   function _adjRe() {
@@ -3000,10 +3026,15 @@ const U = (() => {
 
   return {
     init, uCol, uTopt, bTB, lPal, palReset, palClear, palExport, palPNG,
-    newFile, mkNew, imgSize, aRsz, crop, trim, shiftPx,
+    newFile, mkNew, imgSize, aRsz, crop, trim,
+    shiftPx: _lg(shiftPx),                          /* ← */
     briCon, prevBC, apBC, hueSat, prevHS, apHS, blurImg, prevBI, apBI,
-    _adjCancel, desat, invertCol, levels, prevLv, apLv,
-    stroke, prevSk, apSk, replaceColor, apRC, colorRange, apCR,
+    _adjCancel,
+    desat: _lg(desat), invertCol: _lg(invertCol),    /* ← ← */
+    levels, prevLv, apLv,
+    stroke, prevSk, apSk, replaceColor,
+    apRC: _lg(apRC),                                 /* ← */
+    colorRange, apCR,
     gridCfg, applyGrid, checkerCfg, tiledCfg, textDlg, aTxt,
     tweenDlg, apTw, togTheme, togCvOnly, showKeys, apK, svKF, ldKF,
     pxCount, about, sMo, cMo
