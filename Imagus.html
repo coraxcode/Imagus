@@ -160,7 +160,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
       <div style="padding:1px 8px;display:flex;align-items:center;gap:3px;font-size:9px;color:var(--txd)"><span>Op</span><input type="range" id="lop" min="0" max="100" value="100" style="flex:1;height:3px"><span id="lov">100</span></div>
       <div id="ll"></div></div>
     <div class="ps"><div class="ph">Palette</div>
-      <div class="pbtn"><button onclick="U.palPNG()">Add PNG</button><button onclick="U.palReset()">Reset 256</button><button onclick="U.palClear()">Clear</button><button onclick="U.palExport()">Export PNG</button></div>
+            <div class="pbtn"><button onclick="U.palPNG()">Add PNG</button><button onclick="U.palReset()">Reset 256</button><button onclick="U.palClear()">Clear</button><button onclick="U.palSort()">Sort</button><button onclick="U.palExport()">Export PNG</button></div>
       <div id="pg"></div></div>
   </div>
   <div id="tl"><div id="tc">
@@ -253,6 +253,7 @@ const BlobURLs = (() => {
 
 /* ===== LAYER LOCK GUARD ===== */
 let _lockMsgTimer = 0;
+let _dirty = false;
 
 function _showLockMsg() {
   const ci = document.getElementById('ci');
@@ -386,7 +387,7 @@ const C = (() => {
       mx.translate(fl.x + fw / 2, fl.y + fh / 2);
       mx.rotate(fl.rot || 0);
       mx.globalAlpha = 0.9;
-      mx.imageSmoothingEnabled = true;
+      mx.imageSmoothingEnabled = !T.tfPixel;
       mx.drawImage(fl.canvas, -fw / 2, -fh / 2, fw, fh);
       mx.restore();
       mx.imageSmoothingEnabled = false;
@@ -719,7 +720,7 @@ const T = (() => {
   let ppx = true, shM = 'outline', bShape = 'circle';
   let symH = false, symV = false, sym45 = false, sym45n = false;
   let mouseH = 0, gradT = 'linear', lockX = false, lockY = false, smInt = 5;
-  let sel = null, clip = null, floating = null, tfMode = false;
+  let sel = null, clip = null, floating = null, tfMode = false, tfPixel = false;
   let drag = false, ds = null, lp = null, mo = null, tc = null, tx = null;
   let customBrush = null, selFrames = new Set();
   let spaceDown = false, ctrlPick = null, lastBP = null;
@@ -1112,7 +1113,7 @@ const T = (() => {
     la.ctx.save();
     la.ctx.translate(Math.round(floating.x) + fw / 2, Math.round(floating.y) + fh / 2);
     la.ctx.rotate(floating.rot || 0);
-    la.ctx.imageSmoothingEnabled = true;
+    la.ctx.imageSmoothingEnabled = !tfPixel;
     la.ctx.drawImage(floating.canvas, -fw / 2, -fh / 2, fw, fh);
     la.ctx.restore();
     la.ctx.imageSmoothingEnabled = false;
@@ -1191,7 +1192,7 @@ const T = (() => {
   }
 
   function onDown(e) {
-    if (ctrlPick && !e.ctrlKey && !e.metaKey) {
+    if (ctrlPick && !e.altKey) {
       cur = ctrlPick; ctrlPick = null;
       document.querySelectorAll('.tb').forEach(b => b.classList.toggle('on', b.dataset.tool === cur));
     }
@@ -1233,6 +1234,17 @@ const T = (() => {
           mo = { type: 'movefloat', dx: pos.x - floating.x, dy: pos.y - floating.y };
           return;
         }
+        /* Click outside bounds in tfMode → start rotation (professional UX) */
+        if (!hid) {
+          const f = floating;
+          mo = {
+            type: 'rotate',
+            sa: Math.atan2(pos.y - (f.y + (f.th || f.canvas.height) / 2),
+                           pos.x - (f.x + (f.tw || f.canvas.width) / 2)),
+            sr: f.rot || 0
+          };
+          return;
+        }
       }
       const f = floating, fw = f.tw || f.canvas.width, fh = f.th || f.canvas.height;
       if (pos.x >= f.x && pos.x <= f.x + fw && pos.y >= f.y && pos.y <= f.y + fh) {
@@ -1249,6 +1261,30 @@ const T = (() => {
       drag = false; return;
     }
     if (!la) return;
+
+    /* Ctrl+left-click: auto-select topmost layer at click position */
+    if (e.ctrlKey && e.button === 0 && !floating) {
+      const fr = An.frames[An.cf];
+      if (fr) {
+        const px = Math.floor(pos.x), py = Math.floor(pos.y);
+        if (px >= 0 && py >= 0 && px < C.W && py < C.H) {
+          for (let i = fr.layers.length - 1; i >= 0; i--) {
+            if (!fr.layers[i].visible) continue;
+            if (fr.layers[i].ctx.getImageData(px, py, 1, 1).data[3] > 0) {
+              fr.activeLayer = i; Ly.ui(); break;
+            }
+          }
+        }
+      }
+      drag = false; return;
+    }
+
+    /* Ctrl+right-drag: move active layer */
+    if (e.ctrlKey && isR && !floating) {
+      if (la.locked) { _showLockMsg(); drag = false; return; }
+      Hi.push(); mo = { type: 'movelayer', ...pos }; return;
+    }
+
     const readOnly = ['picker', 'rect-select', 'freehand-select', 'magic-wand', 'brush-select'].includes(cur);
     if (la.locked && !readOnly) { _showLockMsg(); drag = false; return; }
 
@@ -1430,6 +1466,18 @@ const T = (() => {
     const readOnly = ['picker', 'rect-select', 'freehand-select', 'magic-wand', 'brush-select'].includes(cur);
     if (!la || (la.locked && !readOnly)) { lp = { ...pos }; return; }
 
+    /* Handle movelayer from both Move tool and Ctrl+right-drag */
+    if (mo && mo.type === 'movelayer') {
+      const dx2 = Math.round(pos.x - mo.x), dy2 = Math.round(pos.y - mo.y);
+      if (dx2 || dy2) {
+        const imgd = la.ctx.getImageData(0, 0, C.W, C.H);
+        la.ctx.clearRect(0, 0, C.W, C.H);
+        la.ctx.putImageData(imgd, dx2, dy2);
+        mo = { type: 'movelayer', ...pos }; C.render();
+      }
+      lp = { ...pos }; return;
+    }
+
     if (cur === 'brush') {
       if (ppx && bSz <= 1 && !customBrush) {
         const nx = Math.floor(pos.x), ny = Math.floor(pos.y);
@@ -1497,16 +1545,6 @@ const T = (() => {
       drawGrad(tx, ds.x, ds.y, pos.x, pos.y, C.pc, C.sc, gradT);
       C.render();
       document.getElementById('mc').getContext('2d').drawImage(tc, 0, 0);
-    }
-    else if (cur === 'move' && mo && mo.type === 'movelayer') {
-      const dx2 = Math.round(pos.x - mo.x), dy2 = Math.round(pos.y - mo.y);
-      if (dx2 || dy2) {
-        const imgd = la.ctx.getImageData(0, 0, C.W, C.H);
-        la.ctx.clearRect(0, 0, C.W, C.H);
-        la.ctx.putImageData(imgd, dx2, dy2);
-        mo = { type: 'movelayer', ...pos };
-        C.render();
-      }
     }
   }
 
@@ -1704,6 +1742,7 @@ const T = (() => {
     get gradType() { return gradT; }, set gradType(v) { gradT = v; },
     get floating() { return floating; },
     get tfMode() { return tfMode; },
+    get tfPixel() { return tfPixel; }, set tfPixel(v) { tfPixel = v; C.render(); },    
     get spaceDown() { return spaceDown; }, set spaceDown(v) { spaceDown = v; },
     get ctrlPick() { return ctrlPick; }, set ctrlPick(v) { ctrlPick = v; },
     onDown, onMove, onUp, drawSel, set, setLight, resetStuck,
@@ -1875,6 +1914,7 @@ const Ly = (() => {
       lk.className = 'lv';
       lk.textContent = ly.locked ? '\u{1F512}' : '\u{1F513}';
       lk.title = ly.locked ? 'Unlock layer' : 'Lock layer';
+      if (ly.locked) lk.style.cssText = 'background:#c22;color:#fff;border-radius:2px;padding:0 2px';
       lk.onclick = ev => { ev.stopPropagation(); ly.locked = !ly.locked; ui(); };
       const vs = document.createElement('span');
       vs.className = 'lv';
@@ -1984,7 +2024,7 @@ const An = (() => {
     playing = false; clearTimeout(timer);
     document.getElementById('bp').textContent = '▶';
     document.getElementById('bp').classList.remove('on');
-    if (_ds) { _ds = false; uStrip(); }
+    if (_ds) { _ds = false; cf = 0; uStrip(); Ly.ui(); C.render(); syncDur(); }
   }
 
   function togOnion() {
@@ -2124,6 +2164,7 @@ const Hi = (() => {
   }
 
   function push() {
+    _dirty = true;
     const cap = maxDepth();
     u.push(snap());
     while (u.length > cap) u.shift();
@@ -2144,7 +2185,7 @@ const Hi = (() => {
     restore(r.pop());
   }
 
-  function clear() { u = []; r = []; }
+  function clear() { u = []; r = []; _dirty = false; }
 
   return { push, undo, redo, clear };
 })();
@@ -2215,7 +2256,7 @@ const U = (() => {
     else if (['rect-select', 'freehand-select', 'magic-wand'].includes(t)) {
       let h = '';
       if (t === 'magic-wand') h += `<label>Tol<input type="range" min="0" max="128" value="${T.tolerance}" oninput="T.tolerance=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.tolerance}</span></label>`;
-      h += `<label>Tf<input type="checkbox" ${T.tfMode ? 'checked' : ''} onchange="T.toggleTf(this.checked)"></label><label style="color:var(--txd)">Shift=move · Enter=apply</label>`;
+            h += `<label>Tf<input type="checkbox" ${T.tfMode ? 'checked' : ''} onchange="T.toggleTf(this.checked)"></label><label>Px<input type="checkbox" ${T.tfPixel ? 'checked' : ''} onchange="T.tfPixel=this.checked" title="Pixel-perfect (no blur)"></label><label style="color:var(--txd)">Shift=move · Enter=apply</label>`;
       b.innerHTML = h;
     }
     else if (t === 'magnifier') b.innerHTML = `<label style="color:var(--txd)">Click=in · Right=out</label>`;
@@ -2297,6 +2338,12 @@ const U = (() => {
 
   function palReset() { lPal([...PAL256]); }
   function palClear() { lPal([]); }
+
+  function palSort() {
+    if (!userPalette.length) return;
+    const lum = h => { const r = parseInt(h.slice(1,3),16), g = parseInt(h.slice(3,5),16), b = parseInt(h.slice(5,7),16); return r*.299+g*.587+b*.114; };
+    lPal([...userPalette].sort((a, b) => lum(a) - lum(b)));
+  }
 
   function palExport() {
     if (!userPalette.length) return;
@@ -2507,7 +2554,7 @@ const U = (() => {
   }
 
   function showKeys() {
-    sMo(`<h3>Shortcuts</h3><div style="font-size:9px;line-height:1.7;max-height:140px;overflow-y:auto;margin-bottom:8px">B Brush · E Eraser · A Airbrush · D Gradient · G Fill<br>I Picker · V Move · H Pan · Z Zoom · S Smooth · T Text<br>M Select · W Wand · L Line · R Rect · C Ellipse<br>1 Prev · 2 Next · 3 GoTo · 4 Play · 5 Onion · 0 All Frames<br>SymH & SymV (Alt+Drag – Move axis)<br>Arrow Keys = Shift 1px · X Swap<br>Ctrl+Z/Y · Ctrl+C/V/X · Ctrl+A · Ctrl+S<br>Space=Pan · Ctrl=Picker · Enter=Apply · Esc=Deselect · F11</div><label>Edit (JSON):</label><textarea id="keyjson">${JSON.stringify(KEYS, null, 2)}</textarea><div class="mb"><button class="bsc" onclick="U.ldKF()">Load</button><button class="bsc" onclick="U.svKF()">Save</button><button class="bp" onclick="U.apK()">Apply</button></div>`);
+    sMo(`<h3>Shortcuts</h3><div style="font-size:9px;line-height:1.7;max-height:140px;overflow-y:auto;margin-bottom:8px">B Brush · E Eraser · A Airbrush · D Gradient · G Fill<br>I Picker · V Move · H Pan · Z Zoom · S Smooth · T Text<br>M Select · W Wand · L Line · R Rect · C Ellipse<br>1 Prev · 2 Next · 3 GoTo · 4 Play · 5 Onion · 0 All Frames<br>SymH & SymV (Alt+Drag – Move axis)<br>Arrow Keys = Shift 1px · X Swap<br>Ctrl+Z/Y · Ctrl+C/V/X · Ctrl+A · Ctrl+S<br>Space=Pan · Alt=Picker · Enter=Apply · Esc=Deselect · F11<br>Ctrl+Click=Select Layer · Ctrl+Right-Drag=Move Layer</div><label>Edit (JSON):</label><textarea id="keyjson">${JSON.stringify(KEYS, null, 2)}</textarea><div class="mb"><button class="bsc" onclick="U.ldKF()">Load</button><button class="bsc" onclick="U.svKF()">Save</button><button class="bp" onclick="U.apK()">Apply</button></div>`);
   }
 
   function apK() {
@@ -3018,8 +3065,8 @@ const U = (() => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
       const ctrl = e.ctrlKey || e.metaKey, shift = e.shiftKey;
 
-      if (e.key === 'Control' && !T.ctrlPick) {
-        T.ctrlPick = T.current; T.setLight('picker'); return;
+      if (e.key === 'Alt' && !T.ctrlPick) {
+       e.preventDefault(); T.ctrlPick = T.current; T.setLight('picker'); return;
       }
       if (e.key === ' ' && !T.spaceDown) { e.preventDefault(); T.spaceDown = true; return; }
 
@@ -3082,7 +3129,7 @@ const U = (() => {
     });
 
     document.addEventListener('keyup', e => {
-      if (e.key === 'Control' && T.ctrlPick) {
+      if (e.key === 'Alt' && T.ctrlPick) {
         T.setLight(T.ctrlPick); T.ctrlPick = null;
       }
       if (e.key === ' ') T.spaceDown = false;
@@ -3096,7 +3143,7 @@ const U = (() => {
   function init() { bTB(); iCol(); lPal([...PAL256]); iEvt(); uCol(); uTopt(); }
 
   return {
-    init, uCol, uTopt, bTB, lPal, palReset, palClear, palExport, palPNG,
+    init, uCol, uTopt, bTB, lPal, palReset, palClear, palSort, palExport, palPNG,
     newFile, mkNew, imgSize, aRsz, crop, trim,
     shiftPx: _lg(shiftPx),                          /* ← */
     briCon, prevBC, apBC, hueSat, prevHS, apHS, blurImg, prevBI, apBI,
@@ -3414,6 +3461,7 @@ const IO = (() => {
       const url = BlobURLs.create(bl);
       const a = document.createElement('a');
       a.href = url; a.download = 'project.imagus'; a.click();
+      _dirty = false;
       setTimeout(() => BlobURLs.revoke(url), 2000);
     } catch (err) {
       console.error('Save error:', err);
@@ -3736,6 +3784,10 @@ window.addEventListener('load', () => {
   requestAnimationFrame(() => {
     C.zFit(); C.render(); Ly.ui(); U.uCol();
   });
+});
+
+window.addEventListener('beforeunload', e => {
+  if (_dirty) { e.preventDefault(); e.returnValue = ''; }
 });
 </script>
 </body>
