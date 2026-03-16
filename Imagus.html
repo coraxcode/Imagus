@@ -788,19 +788,38 @@ const T = (() => {
     const cx2 = p + 0.5, cy2 = q + 0.5;
 
     if (soft > 0 && sz > 1) {
-      const hf = Math.max(0.01, 1 - soft / 10);
-      const rgb = h2r(col);
-      const g = ctx.createRadialGradient(cx2, cy2, 0, cx2, cy2, r);
-      g.addColorStop(0, col);
-      g.addColorStop(Math.min(hf, 0.99), col);
-      g.addColorStop(
-        Math.min(hf + 0.001, 0.999),
-        `rgba(${rgb.r},${rgb.g},${rgb.b},${Math.max(0, 1 - soft / 15)})`
-      );
-      g.addColorStop(1, `rgba(${rgb.r},${rgb.g},${rgb.b},0)`);
-      ctx.fillStyle = g;
-      if (bShape === 'square') ctx.fillRect(p - Math.floor(r), q - Math.floor(r), sz, sz);
-      else { ctx.beginPath(); ctx.arc(cx2, cy2, r, 0, Math.PI * 2); ctx.fill(); }
+      if (bShape === 'square') {
+        const halfSz = Math.floor(sz / 2);
+        const left = p - halfSz, top2 = q - halfSz;
+        const softZone = Math.max(1, Math.round(sz * soft / 20));
+        const rgb = h2r(col);
+        const baseAlpha = bOp / 100;
+        for (let yy = 0; yy < sz; yy++) {
+          for (let xx = 0; xx < sz; xx++) {
+            const dx2 = left + xx, dy2 = top2 + yy;
+            if (dx2 < 0 || dy2 < 0 || dx2 >= C.W || dy2 >= C.H) continue;
+            const edgeDist = Math.min(xx, yy, sz - 1 - xx, sz - 1 - yy);
+            const a = edgeDist >= softZone ? 1 : edgeDist / softZone;
+            ctx.globalAlpha = baseAlpha * a;
+            ctx.fillStyle = col;
+            ctx.fillRect(dx2, dy2, 1, 1);
+          }
+        }
+        ctx.globalAlpha = 1;
+      } else {
+        const hf = Math.max(0.01, 1 - soft / 10);
+        const rgb = h2r(col);
+        const g = ctx.createRadialGradient(cx2, cy2, 0, cx2, cy2, r);
+        g.addColorStop(0, col);
+        g.addColorStop(Math.min(hf, 0.99), col);
+        g.addColorStop(
+          Math.min(hf + 0.001, 0.999),
+          `rgba(${rgb.r},${rgb.g},${rgb.b},${Math.max(0, 1 - soft / 15)})`
+        );
+        g.addColorStop(1, `rgba(${rgb.r},${rgb.g},${rgb.b},0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(cx2, cy2, r, 0, Math.PI * 2); ctx.fill();
+      }
     } else {
       ctx.fillStyle = col;
       if (bShape === 'square') ctx.fillRect(p - Math.floor(r), q - Math.floor(r), sz, sz);
@@ -2471,6 +2490,7 @@ const U = (() => {
     const la = T.activeLayer(); if (!la) return null;
     if (la.locked) { alert('Layer is locked.'); return null; }
     _adjBk = la.ctx.getImageData(0, 0, C.W, C.H);
+    return la;
   }
 
   function _adjRe() {
