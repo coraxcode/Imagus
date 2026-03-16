@@ -1246,7 +1246,8 @@ const T = (() => {
       drag = false; return;
     }
     if (!la) return;
-    if (la.locked) { _showLockMsg(); drag = false; return; }
+    const readOnly = ['picker', 'rect-select', 'freehand-select', 'magic-wand', 'brush-select'].includes(cur);
+    if (la.locked && !readOnly) { _showLockMsg(); drag = false; return; }
 
     if (e.shiftKey && sel && sel.type === 'rect' && (isSel(cur) || cur === 'move')) {
       if (floatFromSel()) {
@@ -1883,6 +1884,7 @@ const An = (() => {
 
   function rmF() {
     if (frames.length <= 1) return;
+    Hi.push();
     frames.splice(cf, 1);
     cf = Math.min(cf, frames.length - 1);
     uStrip(); Ly.ui(); C.render();
@@ -2734,7 +2736,8 @@ const U = (() => {
 
   function prevBI() {
     const la = T.activeLayer(); if (!la || !_adjBk) return;
-    const r = +document.getElementById('bi_r').value;
+    const r = Math.min(+document.getElementById('bi_r').value, Math.floor((Math.min(C.W, C.H) - 1) / 2));
+    if (r < 1) return;
     const w = C.W, h = C.H;
     const src = _adjBk.data;
     const t1 = new Uint8ClampedArray(src.length);
