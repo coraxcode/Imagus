@@ -85,6 +85,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
       <div onclick="IO.openImg()">Open Image<span class="sc">Ctrl+O</span></div>
       <div onclick="IO.loadProj()">Load .imagus</div>
       <div onclick="IO.importSeq()">Import Images → Timeline</div><div class="sep"></div>
+      <div onclick="IO.importImageAsLayer()">Import Image as Layer</div>
       <div onclick="IO.save()">Save<span class="sc">Ctrl+S</span></div><div class="sep"></div>
       <div onclick="IO.exp('png')">Export PNG</div><div onclick="IO.exp('jpeg')">Export JPEG</div>
       <div onclick="IO.exp('webp')">Export WEBP</div><div onclick="IO.expGIF()">Export GIF</div>
@@ -3400,6 +3401,110 @@ const IO = (() => {
     inp.click();
   }
 
+    function importImageAsLayer() {
+      const inp = document.createElement('input');
+      inp.type = 'file';
+      inp.accept = '.png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp';
+
+      inp.onchange = () => {
+        const file = inp.files && inp.files[0];
+        if (!file) return;
+
+        const img = new Image();
+        const url = BlobURLs.create(file);
+
+        img.onload = () => {
+          const sourceW = img.width;
+          const sourceH = img.height;
+          const longestSide = Math.max(sourceW, sourceH);
+          const safeName =
+            file.name.replace(/\.[^.]+$/, '').trim() ||
+            ('Imported Layer ' + ((An.frames[An.cf]?.layers.length || 0) + 1));
+
+          U.sMo(`
+            <h3>Import Image as Layer</h3>
+            <p style="font-size:9px;color:var(--txd);margin-bottom:8px">
+              Source: ${sourceW} × ${sourceH}px
+            </p>
+            <label>
+              Target Size (px)
+              <input type="number" id="import_size" value="${longestSide}" min="1" max="32768">
+            </label>
+            <label>
+              Expand canvas if needed
+              <input type="checkbox" id="import_expand" checked>
+            </label>
+            <p style="font-size:9px;color:var(--txd);margin-top:6px">
+              The image will scale proportionally using the largest side.
+            </p>
+            <div class="mb">
+              <button class="bsc" onclick="U.cMo()">Cancel</button>
+              <button class="bp" id="import_apply_btn">Import</button>
+            </div>
+          `);
+
+          const applyBtn = document.getElementById('import_apply_btn');
+
+          applyBtn.onclick = () => {
+            try {
+              const frame = An.frames[An.cf];
+              if (!frame) return;
+
+              if (T.floating) T.commitFloat();
+
+              const targetSize = Math.max(1, Math.round(+document.getElementById('import_size').value || longestSide));
+              const expandCanvas = document.getElementById('import_expand').checked;
+
+              const scale = targetSize / longestSide;
+              const drawW = Math.max(1, Math.round(sourceW * scale));
+              const drawH = Math.max(1, Math.round(sourceH * scale));
+
+              Hi.push();
+
+              if (expandCanvas) {
+                const newCanvasW = Math.max(C.W, drawW);
+                const newCanvasH = Math.max(C.H, drawH);
+
+                if (newCanvasW !== C.W || newCanvasH !== C.H) {
+                  C.resize(newCanvasW, newCanvasH);
+                }
+              }
+
+              const currentFrame = An.frames[An.cf];
+              if (!currentFrame) return;
+
+              const layer = Ly.mk(safeName);
+              layer.ctx.imageSmoothingEnabled = false;
+              layer.ctx.clearRect(0, 0, C.W, C.H);
+
+              const x = Math.round((C.W - drawW) / 2);
+              const y = Math.round((C.H - drawH) / 2);
+
+              layer.ctx.drawImage(img, x, y, drawW, drawH);
+
+              currentFrame.layers.push(layer);
+              currentFrame.activeLayer = currentFrame.layers.length - 1;
+
+              U.cMo();
+              Ly.ui();
+              C.render();
+            } finally {
+              BlobURLs.revoke(url);
+            }
+          };
+        };
+
+        img.onerror = () => {
+          BlobURLs.revoke(url);
+          alert('Failed to import image.');
+        };
+
+        img.src = url;
+      };
+
+      inp.click();
+    }
+
   function importSeq() {
     const inp = document.createElement('input');
     inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
@@ -3491,7 +3596,7 @@ const IO = (() => {
     inp.click();
   }
 
-  return { exp, expGIF, expAnimWebP, importSeq, save, openImg, loadProj, comp };
+  return { exp, expGIF, expAnimWebP, importSeq, importImageAsLayer, save, openImg, loadProj, comp };
 })();
 
 /* ===== REFERENCE IMAGE ===== */
