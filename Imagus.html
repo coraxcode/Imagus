@@ -278,7 +278,6 @@ const C = (() => {
   let symHP = 0.5, symVP = 0.5;
   let guideH = false, guideV = false, guideHY = 0.5, guideVX = 0.5;
   let tiledMode = 'off';
-  let _renderQueued = false;
 
   const mc = document.getElementById('mc');
   const mx = mc.getContext('2d', { willReadFrequently: true });
@@ -573,12 +572,12 @@ const C = (() => {
   function togGrid() { grid = !grid; render(); }
 
   function flipC(dir) {
-    Hi.push();
     const fr = An.frames[An.cf];
     const sel = T.selection;
     const la = T.activeLayer();
     if (sel && sel.type === 'rect' && la && sel.w > 0 && sel.h > 0) {
       if (la.locked) { _showLockMsg(); return; }
+      Hi.push();
       const sx = Math.max(0, Math.round(sel.x)), sy = Math.max(0, Math.round(sel.y));
       const sw = Math.min(Math.round(sel.w), W - sx), sh = Math.min(Math.round(sel.h), H - sy);
       if (sw > 0 && sh > 0) {
@@ -594,6 +593,7 @@ const C = (() => {
         la.ctx.drawImage(t2, sx, sy);
       }
     } else {
+      Hi.push();
       for (const ly of fr.layers) {
         const t2 = document.createElement('canvas');
         t2.width = W; t2.height = H;
@@ -611,13 +611,13 @@ const C = (() => {
   }
 
   function rotC(deg) {
-    Hi.push();
     const fr = An.frames[An.cf];
     const sel = T.selection;
     const la = T.activeLayer();
     const ad = Math.abs(deg);
     if (sel && sel.type === 'rect' && la && sel.w > 0 && sel.h > 0) {
       if (la.locked) { _showLockMsg(); return; }
+      Hi.push();
       const sx = Math.max(0, Math.round(sel.x)), sy = Math.max(0, Math.round(sel.y));
       const sw = Math.min(Math.round(sel.w), W - sx), sh = Math.min(Math.round(sel.h), H - sy);
       if (sw > 0 && sh > 0) {
@@ -643,6 +643,7 @@ const C = (() => {
         };
       }
     } else {
+      Hi.push();
       let nw = W, nh = H;
       if (ad === 90 || ad === 270) { nw = H; nh = W; }
       for (const ly of fr.layers) {
@@ -792,7 +793,6 @@ const T = (() => {
         const halfSz = Math.floor(sz / 2);
         const left = p - halfSz, top2 = q - halfSz;
         const softZone = Math.max(1, Math.round(sz * soft / 20));
-        const rgb = h2r(col);
         const baseAlpha = bOp / 100;
         for (let yy = 0; yy < sz; yy++) {
           for (let xx = 0; xx < sz; xx++) {
@@ -1104,6 +1104,7 @@ const T = (() => {
     if (!floating) return;
     const la = al();
     if (!la) return;
+    if (la.locked) { _showLockMsg(); return; }
     Hi.push();
     const fw = floating.tw || floating.canvas.width;
     const fh = floating.th || floating.canvas.height;
@@ -1244,7 +1245,8 @@ const T = (() => {
       C.zoomAt(isR ? 1 / 1.5 : 1.5, e.clientX, e.clientY);
       drag = false; return;
     }
-    if (!la || la.locked) return;
+    if (!la) return;
+    if (la.locked) { _showLockMsg(); drag = false; return; }
 
     if (e.shiftKey && sel && sel.type === 'rect' && (isSel(cur) || cur === 'move')) {
       if (floatFromSel()) {
@@ -1699,6 +1701,8 @@ const Ly = (() => {
     const d = mk(s.name + ' copy');
     d.ctx.drawImage(s.canvas, 0, 0);
     d.opacity = s.opacity;
+    d.visible = s.visible;
+    d.locked = s.locked;
     f.layers.splice(f.activeLayer + 1, 0, d);
     f.activeLayer++;
     ui(); C.render();
