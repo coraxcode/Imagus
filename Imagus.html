@@ -128,6 +128,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
       <div onclick="Ly.syncAll()">Add Layer to All Frames</div>
       <div onclick="Ly.syncSel()">Add Layer to Selected Frames</div>
       <div onclick="Ly.rmAll()">Remove Layer from All Frames</div>
+      <div onclick="Ly.detachAll()">Detach Layer (Keep in Lowest Frame)</div>
+      <div onclick="Ly.detachSel()">Detach Layer from Selected Frames</div>
     </div></div>
     <div class="mi">View<div class="md">
       <div onclick="C.zIn()">Zoom In<span class="sc">Ctrl++</span></div><div onclick="C.zOut()">Zoom Out<span class="sc">Ctrl+-</span></div>
@@ -156,11 +158,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
       </div>
     </div>
     <div class="ps" style="flex:1;display:flex;flex-direction:column;overflow:hidden"><div class="ph">Layers</div>
-      <div class="lb"><button onclick="Ly.add()">+</button><button onclick="Ly.rm()">−</button><button onclick="Ly.dup()">⧉</button><button onclick="Ly.up()">↑</button><button onclick="Ly.dn()">↓</button><button onclick="Ly.syncAll()" title="Add layer to all frames">⟿All</button><button onclick="Ly.syncSel()" title="Add layer to selected frames">⟿Sel</button><button onclick="Ly.ren()" title="Rename">✎</button></div>
+      <div class="lb"><button onclick="Ly.add()">+</button><button onclick="Ly.rm()">−</button><button onclick="Ly.dup()">⧉</button><button onclick="Ly.up()">↑</button><button onclick="Ly.dn()">↓</button><button onclick="Ly.syncAll()" title="Add layer to all frames">⟿All</button><button onclick="Ly.syncSel()" title="Add layer to selected frames">⟿Sel</button><button onclick="Ly.ren()" title="Rename">✎</button><button onclick="Ly.detachAll()" title="Detach from other frames">⊘All</button><button onclick="Ly.detachSel()" title="Detach from selected frames">⊘Sel</button></div>
       <div style="padding:1px 8px;display:flex;align-items:center;gap:3px;font-size:9px;color:var(--txd)"><span>Op</span><input type="range" id="lop" min="0" max="100" value="100" style="flex:1;height:3px"><span id="lov">100</span></div>
       <div id="ll"></div></div>
     <div class="ps"><div class="ph">Palette</div>
-            <div class="pbtn"><button onclick="U.palPNG()">Add PNG</button><button onclick="U.palReset()">Reset 256</button><button onclick="U.palClear()">Clear</button><button onclick="U.palSort()">Sort</button><button onclick="U.palExport()">Export PNG</button></div>
+            <div class="pbtn"><button onclick="U.palPNG()">Add PNG</button><button onclick="U.palReset()">Reset 256</button><button onclick="U.palClear()">Clear</button><button onclick="U.palSort()">Sort</button><button onclick="U.palExport()">Export PNG</button><button onclick="U.palSzDn()" title="Smaller swatches">−</button><button onclick="U.palSzUp()" title="Larger swatches">+</button></div>
       <div id="pg"></div></div>
   </div>
   <div id="tl"><div id="tc">
@@ -220,6 +222,7 @@ const PAL256 = (() => {
 })();
 
 let userPalette = [...PAL256];
+let palSwatchSize = 12;
 
 let KEYS = {
   brush: 'b', eraser: 'e', airbrush: 'a', bucket: 'g', picker: 'i',
@@ -504,26 +507,27 @@ const C = (() => {
       ox.strokeRect(-fw / 2, -fh / 2, fw, fh);
       ox.setLineDash([]);
       /* Transform handles */
+      /* Transform handles — expanded for tiny selections */
       if (T.tfMode) {
+        const minZone = Math.max(30 / zm, 15);
+        const effw = Math.max(fw, minZone), effh = Math.max(fh, minZone);
         const hs = Math.max(10 / zm, 3);
         const pts = [
-          [-fw / 2, -fh / 2], [0, -fh / 2], [fw / 2, -fh / 2],
-          [-fw / 2, 0], [fw / 2, 0],
-          [-fw / 2, fh / 2], [0, fh / 2], [fw / 2, fh / 2]
+          [-effw/2, -effh/2], [0, -effh/2], [effw/2, -effh/2],
+          [-effw/2, 0], [effw/2, 0],
+          [-effw/2, effh/2], [0, effh/2], [effw/2, effh/2]
         ];
         ox.fillStyle = '#fff'; ox.strokeStyle = '#2266ee'; ox.lineWidth = 1.5 / zm;
         for (const [hx, hy] of pts) {
           ox.fillRect(hx - hs / 2, hy - hs / 2, hs, hs);
           ox.strokeRect(hx - hs / 2, hy - hs / 2, hs, hs);
         }
-        const rh2 = Math.min(20 / zm, fh / 2 - 2);
-        if (rh2 > 2) {
-          ox.strokeStyle = '#44aaff'; ox.lineWidth = 1 / zm;
-          ox.beginPath(); ox.moveTo(0, -fh / 2);
-          ox.lineTo(0, -fh / 2 + rh2); ox.stroke();
-          ox.beginPath(); ox.arc(0, -fh / 2 + rh2, 4 / zm, 0, Math.PI * 2);
-          ox.fillStyle = '#44aaff'; ox.fill();
-        }
+        const rGap = 10 / zm;
+        ox.strokeStyle = '#44aaff'; ox.lineWidth = 1 / zm;
+        ox.beginPath(); ox.moveTo(0, -effh / 2);
+        ox.lineTo(0, -effh / 2 - rGap); ox.stroke();
+        ox.beginPath(); ox.arc(0, -effh / 2 - rGap, 4 / zm, 0, Math.PI * 2);
+        ox.fillStyle = '#44aaff'; ox.fill();
       }
       ox.restore();
     }
@@ -719,8 +723,8 @@ const T = (() => {
   let cur = 'brush', bSz = 1, soft = 0, tol = 32, bOp = 100;
   let ppx = true, shM = 'outline', bShape = 'circle';
   let symH = false, symV = false, sym45 = false, sym45n = false;
-  let mouseH = 0, gradT = 'linear', lockX = false, lockY = false, smInt = 5;
-  let sel = null, clip = null, floating = null, tfMode = false, tfPixel = false;
+  let mouseH = 0, gradT = 'linear', gradDither = false, gradDitherLv = 4, lockX = false, lockY = false, smInt = 5;
+  let sel = null, clip = null, floating = null, tfMode = false, tfPixel = false, tfAction = 'auto';
   let drag = false, ds = null, lp = null, mo = null, tc = null, tx = null;
   let customBrush = null, selFrames = new Set();
   let spaceDown = false, ctrlPick = null, lastBP = null;
@@ -940,7 +944,12 @@ const T = (() => {
       if (cx > x1) x1 = cx; if (cy > y1) y1 = cy;
       st.push([cx + 1, cy], [cx - 1, cy], [cx, cy + 1], [cx, cy - 1]);
     }
-    sel = { type: 'rect', x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+    const sw = x1 - x0 + 1, sh = y1 - y0 + 1;
+    const cropMask = new Uint8Array(sw * sh);
+    for (let py = y0; py <= y1; py++)
+      for (let px = x0; px <= x1; px++)
+        if (mk[py * w + px]) cropMask[(py - y0) * sw + (px - x0)] = 1;
+    sel = { type: 'rect', x: x0, y: y0, w: sw, h: sh, mask: cropMask };
     C.render();
   }
 
@@ -1004,6 +1013,29 @@ const T = (() => {
     ctx.globalAlpha = bOp / 100;
     ctx.fillRect(0, 0, C.W, C.H);
     ctx.globalAlpha = 1;
+    if (gradDither) {
+      const w = C.W, h = C.H;
+      const id = ctx.getImageData(0, 0, w, h), d = id.data;
+      const levels = Math.max(2, Math.min(32, gradDitherLv));
+      const step = 255 / (levels - 1);
+      const B = [
+         0,32, 8,40, 2,34,10,42, 48,16,56,24,50,18,58,26,
+        12,44, 4,36,14,46, 6,38, 60,28,52,20,62,30,54,22,
+         3,35,11,43, 1,33, 9,41, 51,19,59,27,49,17,57,25,
+        15,47, 7,39,13,45, 5,37, 63,31,55,23,61,29,53,21
+      ];
+      for (let py = 0; py < h; py++) {
+        for (let px = 0; px < w; px++) {
+          const i = (py * w + px) * 4;
+          if (!d[i + 3]) continue;
+          const thr = (B[(py & 7) * 8 + (px & 7)] / 64 - 0.5) * step;
+          for (let ch = 0; ch < 3; ch++) {
+            d[i+ch] = Math.max(0, Math.min(255, Math.round((d[i+ch] + thr) / step) * step));
+          }
+        }
+      }
+      ctx.putImageData(id, 0, 0);
+    }
   }
 
   function grabBrush() {
@@ -1131,8 +1163,20 @@ const T = (() => {
     Hi.push();
     const fc = document.createElement('canvas');
     fc.width = sw; fc.height = sh;
-    fc.getContext('2d').drawImage(la.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
-    la.ctx.clearRect(sx, sy, sw, sh);
+    const fx = fc.getContext('2d');
+    fx.drawImage(la.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+    if (sel.mask) {
+      const id = fx.getImageData(0, 0, sw, sh), d = id.data;
+      for (let i = 0; i < sel.mask.length; i++)
+        if (!sel.mask[i]) { d[i*4]=d[i*4+1]=d[i*4+2]=d[i*4+3]=0; }
+      fx.putImageData(id, 0, 0);
+      const srcId = la.ctx.getImageData(sx, sy, sw, sh), sd = srcId.data;
+      for (let i = 0; i < sel.mask.length; i++)
+        if (sel.mask[i]) { sd[i*4]=sd[i*4+1]=sd[i*4+2]=sd[i*4+3]=0; }
+      la.ctx.putImageData(srcId, sx, sy);
+    } else {
+      la.ctx.clearRect(sx, sy, sw, sh);
+    }
     floating = { canvas: fc, x: sx, y: sy, tw: sw, th: sh, rot: 0 };
     sel = null; C.render();
     return true;
@@ -1153,26 +1197,41 @@ const T = (() => {
     const dx = pos.x - centerX, dy = pos.y - centerY;
     const localX = dx * Math.cos(invRot) - dy * Math.sin(invRot);
     const localY = dx * Math.sin(invRot) + dy * Math.cos(invRot);
-    const handleSize = Math.max(12 / C.zm, 5);
+    const minZone = Math.max(30 / C.zm, 15);
+    const effw = Math.max(fw, minZone), effh = Math.max(fh, minZone);
+    const handleSize = Math.max(14 / C.zm, 6);
 
+    /* Forced mode override */
+    if (tfAction === 'move') return 'move';
+    if (tfAction === 'rotate') return 'rotate';
+    if (tfAction === 'resize') {
+      const handles = [
+        { id: 'tl', x: -effw/2, y: -effh/2 }, { id: 'tr', x: effw/2, y: -effh/2 },
+        { id: 'bl', x: -effw/2, y: effh/2 }, { id: 'br', x: effw/2, y: effh/2 },
+        { id: 'tc', x: 0, y: -effh/2 }, { id: 'bc', x: 0, y: effh/2 },
+        { id: 'ml', x: -effw/2, y: 0 }, { id: 'mr', x: effw/2, y: 0 }
+      ];
+      let best = 'br', bd = 1e9;
+      for (const h of handles) { const d2 = (localX-h.x)**2+(localY-h.y)**2; if (d2<bd){bd=d2;best=h.id;} }
+      return best;
+    }
+
+    /* Auto mode */
     const resizePoints = [
-      { id: 'tl', x: -fw / 2, y: -fh / 2 }, { id: 'tc', x: 0, y: -fh / 2 },
-      { id: 'tr', x: fw / 2, y: -fh / 2 }, { id: 'ml', x: -fw / 2, y: 0 },
-      { id: 'mr', x: fw / 2, y: 0 }, { id: 'bl', x: -fw / 2, y: fh / 2 },
-      { id: 'bc', x: 0, y: fh / 2 }, { id: 'br', x: fw / 2, y: fh / 2 }
+      { id: 'tl', x: -effw/2, y: -effh/2 }, { id: 'tc', x: 0, y: -effh/2 },
+      { id: 'tr', x: effw/2, y: -effh/2 }, { id: 'ml', x: -effw/2, y: 0 },
+      { id: 'mr', x: effw/2, y: 0 }, { id: 'bl', x: -effw/2, y: effh/2 },
+      { id: 'bc', x: 0, y: effh/2 }, { id: 'br', x: effw/2, y: effh/2 }
     ];
     for (const pt of resizePoints)
       if (Math.abs(localX - pt.x) <= handleSize && Math.abs(localY - pt.y) <= handleSize)
         return pt.id;
 
-    const rotateHandleOffset = Math.min(20 / C.zm, fh / 2 - 2);
-    if (rotateHandleOffset > 2) {
-      const rotateRadius = Math.max(8 / C.zm, 5);
-      const rdx = localX, rdy = localY - (-fh / 2 + rotateHandleOffset);
-      if (rdx * rdx + rdy * rdy <= rotateRadius * rotateRadius) return 'rotate';
-    }
+    const rotRadius = Math.max(10 / C.zm, 6);
+    const rdx = localX, rdy = localY - (-effh / 2 - 10 / C.zm);
+    if (rdx * rdx + rdy * rdy <= rotRadius * rotRadius) return 'rotate';
 
-    if (localX >= -fw / 2 && localX <= fw / 2 && localY >= -fh / 2 && localY <= fh / 2)
+    if (localX >= -effw/2 && localX <= effw/2 && localY >= -effh/2 && localY <= effh/2)
       return 'move';
     return null;
   }
@@ -1626,21 +1685,31 @@ const T = (() => {
   function drawSel(ctx) {
     if (!sel) return;
     ctx.save();
-    ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1.5 / C.zm; ctx.setLineDash([]);
-    if (sel.type === 'rect') ctx.strokeRect(sel.x, sel.y, sel.w, sel.h);
-    else if (sel.type === 'freehand' && sel.points) {
-      ctx.beginPath(); ctx.moveTo(sel.points[0].x, sel.points[0].y);
-      for (let i = 1; i < sel.points.length; i++) ctx.lineTo(sel.points[i].x, sel.points[i].y);
-      ctx.closePath(); ctx.stroke();
+    const sx = Math.round(sel.x || 0), sy = Math.round(sel.y || 0);
+    const sw = Math.round(sel.w || 0), sh = Math.round(sel.h || 0);
+    const u = 1 / C.zm;
+    function strokeRect3() {
+      ctx.strokeStyle = 'rgba(0,0,0,0.65)'; ctx.lineWidth = u * 2.5; ctx.setLineDash([]);
+      ctx.strokeRect(sx, sy, sw, sh);
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = u * 1.2; ctx.setLineDash([]);
+      ctx.strokeRect(sx, sy, sw, sh);
+      ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = u * 1.2;
+      ctx.setLineDash([6 * u, 4 * u]); ctx.lineDashOffset = -_marchOff * u;
+      ctx.strokeRect(sx, sy, sw, sh);
     }
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1 / C.zm;
-    ctx.setLineDash([6 / C.zm, 4 / C.zm]); ctx.lineDashOffset = -_marchOff / C.zm;
-    if (sel.type === 'rect') ctx.strokeRect(sel.x, sel.y, sel.w, sel.h);
-    else if (sel.type === 'freehand' && sel.points) {
-      ctx.beginPath(); ctx.moveTo(sel.points[0].x, sel.points[0].y);
-      for (let i = 1; i < sel.points.length; i++) ctx.lineTo(sel.points[i].x, sel.points[i].y);
-      ctx.closePath(); ctx.stroke();
+    function strokePath3(pts) {
+      function dp() {
+        ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.closePath(); ctx.stroke();
+      }
+      ctx.strokeStyle = 'rgba(0,0,0,0.65)'; ctx.lineWidth = u * 2.5; ctx.setLineDash([]); dp();
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.lineWidth = u * 1.2; ctx.setLineDash([]); dp();
+      ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = u * 1.2;
+      ctx.setLineDash([6 * u, 4 * u]); ctx.lineDashOffset = -_marchOff * u; dp();
     }
+    if (sel.type === 'rect') strokeRect3();
+    else if (sel.type === 'freehand' && sel.points && sel.points.length > 0) strokePath3(sel.points);
     ctx.restore();
   }
 
@@ -1653,14 +1722,30 @@ const T = (() => {
     if (sw < 1 || sh < 1) return;
     clip = document.createElement('canvas');
     clip.width = sw; clip.height = sh;
-    clip.getContext('2d').drawImage(la.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+    const cx = clip.getContext('2d');
+    cx.drawImage(la.canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+    if (sel.mask) {
+      const id = cx.getImageData(0, 0, sw, sh), d = id.data;
+      for (let i = 0; i < sel.mask.length; i++)
+        if (!sel.mask[i]) { d[i*4]=d[i*4+1]=d[i*4+2]=d[i*4+3]=0; }
+      cx.putImageData(id, 0, 0);
+    }
   }
 
   function cutSel() {
     const la = al();
     if (!la || !sel) return;
     Hi.push(); copySel();
-    la.ctx.clearRect(Math.round(sel.x), Math.round(sel.y), Math.round(sel.w), Math.round(sel.h));
+    if (sel.mask) {
+      const sx = Math.max(0, Math.round(sel.x)), sy = Math.max(0, Math.round(sel.y));
+      const sw = Math.min(Math.round(sel.w), C.W - sx), sh = Math.min(Math.round(sel.h), C.H - sy);
+      const id = la.ctx.getImageData(sx, sy, sw, sh), d = id.data;
+      for (let i = 0; i < sel.mask.length; i++)
+        if (sel.mask[i]) { d[i*4]=d[i*4+1]=d[i*4+2]=d[i*4+3]=0; }
+      la.ctx.putImageData(id, sx, sy);
+    } else {
+      la.ctx.clearRect(Math.round(sel.x), Math.round(sel.y), Math.round(sel.w), Math.round(sel.h));
+    }
     C.render(); Ly.ui();
   }
 
@@ -1679,7 +1764,16 @@ const T = (() => {
     const la = al();
     if (!la || !sel) return;
     Hi.push();
-    la.ctx.clearRect(Math.round(sel.x), Math.round(sel.y), Math.round(sel.w), Math.round(sel.h));
+    if (sel.mask) {
+      const sx = Math.max(0, Math.round(sel.x)), sy = Math.max(0, Math.round(sel.y));
+      const sw = Math.min(Math.round(sel.w), C.W - sx), sh = Math.min(Math.round(sel.h), C.H - sy);
+      const id = la.ctx.getImageData(sx, sy, sw, sh), d = id.data;
+      for (let i = 0; i < sel.mask.length; i++)
+        if (sel.mask[i]) { d[i*4]=d[i*4+1]=d[i*4+2]=d[i*4+3]=0; }
+      la.ctx.putImageData(id, sx, sy);
+    } else {
+      la.ctx.clearRect(Math.round(sel.x), Math.round(sel.y), Math.round(sel.w), Math.round(sel.h));
+    }
     C.render(); Ly.ui();
   }
 
@@ -1695,9 +1789,11 @@ const T = (() => {
   function toggleTf(on) {
     if (on && sel && sel.type === 'rect' && !floating) {
       if (!floatFromSel()) return;
-      tfMode = true;
+      tfMode = true; tfAction = 'auto';
     } else if (!on && floating) commitFloat();
-    tfMode = on; C.render(); U.uTopt();
+    tfMode = on;
+    if (!on) tfAction = 'auto';
+    C.render(); U.uTopt();
   }
 
   function set(t) {
@@ -1744,9 +1840,12 @@ const T = (() => {
     get selFrames() { return selFrames; },
     get customBrush() { return customBrush; },
     get gradType() { return gradT; }, set gradType(v) { gradT = v; },
+    get gradDither() { return gradDither; }, set gradDither(v) { gradDither = v; },
+    get gradDitherLv() { return gradDitherLv; }, set gradDitherLv(v) { gradDitherLv = v; },
     get floating() { return floating; },
     get tfMode() { return tfMode; },
-    get tfPixel() { return tfPixel; }, set tfPixel(v) { tfPixel = v; C.render(); },    
+    get tfPixel() { return tfPixel; }, set tfPixel(v) { tfPixel = v; C.render(); },
+    get tfAction() { return tfAction; }, set tfAction(v) { tfAction = v; },    
     get spaceDown() { return spaceDown; }, set spaceDown(v) { spaceDown = v; },
     get ctrlPick() { return ctrlPick; }, set ctrlPick(v) { ctrlPick = v; },
     onDown, onMove, onUp, drawSel, set, setLight, resetStuck,
@@ -1889,6 +1988,43 @@ const Ly = (() => {
     ui(); C.render();
   }
 
+  function detachAll() {
+    const f = fr(); if (!f) return;
+    const idx = f.activeLayer;
+    Hi.push();
+    let lowestFrame = -1;
+    for (let i = 0; i < An.frames.length; i++) {
+      if (idx < An.frames[i].layers.length) { lowestFrame = i; break; }
+    }
+    for (let i = 0; i < An.frames.length; i++) {
+      if (i === lowestFrame) continue;
+      const frame = An.frames[i];
+      if (frame.layers.length > 1 && idx < frame.layers.length) {
+        frame.layers.splice(idx, 1);
+        if (frame.activeLayer >= frame.layers.length)
+          frame.activeLayer = frame.layers.length - 1;
+      }
+    }
+    ui(); C.render();
+  }
+
+  function detachSel() {
+    const f = fr(); if (!f) return;
+    if (T.selFrames.size === 0) { alert('Select frames first (Shift+click in timeline)'); return; }
+    const idx = f.activeLayer;
+    Hi.push();
+    for (const i of T.selFrames) {
+      if (!An.frames[i]) continue;
+      const frame = An.frames[i];
+      if (frame.layers.length > 1 && idx < frame.layers.length) {
+        frame.layers.splice(idx, 1);
+        if (frame.activeLayer >= frame.layers.length)
+          frame.activeLayer = frame.layers.length - 1;
+      }
+    }
+    ui(); C.render();
+  }
+
   function ren() {
     const f = fr(); if (!f) return;
     const ly = f.layers[f.activeLayer];
@@ -1939,7 +2075,7 @@ const Ly = (() => {
     document.getElementById('lov').textContent = ly.opacity;
   }
 
-  return { mk, add, rm, dup, up, dn, mergeDown, flatten, syncAll, syncSel, rmAll, ren, ui, sOp };
+   return { mk, add, rm, dup, up, dn, mergeDown, flatten, syncAll, syncSel, rmAll, detachAll, detachSel, ren, ui, sOp };
 })();
 
 /* ===== ANIMATION ===== */
@@ -2253,14 +2389,30 @@ const U = (() => {
       b.innerHTML = h;
     }
     else if (t === 'smooth') b.innerHTML = `<label>R<input type="range" min="1" max="32" value="${T.brushSize}" oninput="T.brushSize=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.brushSize}</span></label><label>Int<input type="range" min="1" max="10" value="${T.smoothInt}" oninput="T.smoothInt=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.smoothInt}</span></label>`;
-    else if (t === 'gradient') b.innerHTML = `<label>Type<select onchange="T.gradType=this.value"><option value="linear"${T.gradType === 'linear' ? ' selected' : ''}>Linear</option><option value="radial"${T.gradType === 'radial' ? ' selected' : ''}>Radial</option></select></label><label>Op<input type="range" min="1" max="100" value="${T.brushOpacity}" oninput="T.brushOpacity=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.brushOpacity}</span></label>`;
+    else if (t === 'gradient') {
+      let gh = `<label>Type<select onchange="T.gradType=this.value"><option value="linear"${T.gradType === 'linear' ? ' selected' : ''}>Linear</option><option value="radial"${T.gradType === 'radial' ? ' selected' : ''}>Radial</option></select></label>`;
+      gh += `<label>Op<input type="range" min="1" max="100" value="${T.brushOpacity}" oninput="T.brushOpacity=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.brushOpacity}</span></label>`;
+      gh += `<label>Dither<input type="checkbox" ${T.gradDither ? 'checked' : ''} onchange="T.gradDither=this.checked;U.uTopt()"></label>`;
+      if (T.gradDither) gh += `<label>Lvl<input type="range" min="2" max="16" value="${T.gradDitherLv}" oninput="T.gradDitherLv=+this.value;this.nextElementSibling.textContent=this.value" title="Color levels (fewer=more retro)"><span>${T.gradDitherLv}</span></label>`;
+      b.innerHTML = gh;
+    }
     else if (['rect', 'circle'].includes(t)) b.innerHTML = `<label>W<input type="range" min="1" max="32" value="${T.brushSize}" oninput="T.brushSize=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.brushSize}</span></label><label>Mode<select onchange="T.shapeMode=this.value"><option value="outline"${T.shapeMode === 'outline' ? ' selected' : ''}>Outline</option><option value="filled"${T.shapeMode === 'filled' ? ' selected' : ''}>Filled</option></select></label>`;
     else if (t === 'line') b.innerHTML = `<label>W<input type="range" min="1" max="32" value="${T.brushSize}" oninput="T.brushSize=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.brushSize}</span></label>`;
     else if (t === 'bucket') b.innerHTML = `<label>Tol<input type="range" min="0" max="128" value="${T.tolerance}" oninput="T.tolerance=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.tolerance}</span></label>`;
     else if (['rect-select', 'freehand-select', 'magic-wand'].includes(t)) {
       let h = '';
       if (t === 'magic-wand') h += `<label>Tol<input type="range" min="0" max="128" value="${T.tolerance}" oninput="T.tolerance=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.tolerance}</span></label>`;
-            h += `<label>Tf<input type="checkbox" ${T.tfMode ? 'checked' : ''} onchange="T.toggleTf(this.checked)"></label><label>Px<input type="checkbox" ${T.tfPixel ? 'checked' : ''} onchange="T.tfPixel=this.checked" title="Pixel-perfect (no blur)"></label><label style="color:var(--txd)">Shift=move · Enter=apply</label>`;
+      h += `<label>Tf<input type="checkbox" ${T.tfMode ? 'checked' : ''} onchange="T.toggleTf(this.checked)"></label>`;
+      if (T.tfMode) {
+        h += `<label>Px<input type="checkbox" ${T.tfPixel ? 'checked' : ''} onchange="T.tfPixel=this.checked" title="Pixel-perfect (no blur)"></label>`;
+        h += `<label><select onchange="T.tfAction=this.value" style="background:var(--bg1);border:1px solid var(--bd);color:var(--tx);font-size:9px;padding:1px 2px;border-radius:2px">`;
+        h += `<option value="auto"${T.tfAction==='auto'?' selected':''}>Auto</option>`;
+        h += `<option value="move"${T.tfAction==='move'?' selected':''}>Move</option>`;
+        h += `<option value="rotate"${T.tfAction==='rotate'?' selected':''}>Rotate</option>`;
+        h += `<option value="resize"${T.tfAction==='resize'?' selected':''}>Resize</option>`;
+        h += `</select></label>`;
+      }
+      h += `<label style="color:var(--txd)">Shift=move · Enter=apply</label>`;
       b.innerHTML = h;
     }
     else if (t === 'magnifier') b.innerHTML = `<label style="color:var(--txd)">Click=in · Right=out</label>`;
@@ -2333,7 +2485,10 @@ const U = (() => {
     g.innerHTML = '';
     for (const c2 of cc) {
       const s = document.createElement('div');
-      s.className = 'pw'; s.style.background = c2;
+      s.className = 'pw';
+      s.style.background = c2;
+      s.style.width = palSwatchSize + 'px';
+      s.style.height = palSwatchSize + 'px';
       s.onclick = () => { C.pc = c2; uCol(); };
       s.oncontextmenu = e => { e.preventDefault(); C.sc = c2; uCol(); };
       g.append(s);
@@ -2345,8 +2500,23 @@ const U = (() => {
 
   function palSort() {
     if (!userPalette.length) return;
-    const lum = h => { const r = parseInt(h.slice(1,3),16), g = parseInt(h.slice(3,5),16), b = parseInt(h.slice(5,7),16); return r*.299+g*.587+b*.114; };
-    lPal([...userPalette].sort((a, b) => lum(a) - lum(b)));
+    function hslKey(hex) {
+      const r = parseInt(hex.slice(1,3),16)/255, g = parseInt(hex.slice(3,5),16)/255, b = parseInt(hex.slice(5,7),16)/255;
+      const mx = Math.max(r,g,b), mn = Math.min(r,g,b), l = (mx+mn)/2;
+      if (mx === mn) return [1000, 0, l];
+      const d = mx - mn, s = l > .5 ? d/(2-mx-mn) : d/(mx+mn);
+      let h;
+      if (mx === r) h = ((g-b)/d + (g<b?6:0))/6;
+      else if (mx === g) h = ((b-r)/d + 2)/6;
+      else h = ((r-g)/d + 4)/6;
+      const hueBand = Math.floor(h * 12);
+      return [hueBand, l, s];
+    }
+    lPal([...userPalette].sort((a, b) => {
+      const ka = hslKey(a), kb = hslKey(b);
+      if (ka[0] !== kb[0]) return ka[0] - kb[0];
+      return ka[1] - kb[1];
+    }));
   }
 
   function palExport() {
@@ -2395,6 +2565,11 @@ const U = (() => {
     };
     inp.click();
   }
+  
+  function palSzUp() { palSwatchSize = Math.min(32, palSwatchSize + 2); lPal(userPalette); }
+  function palSzDn() { palSwatchSize = Math.max(6, palSwatchSize - 2); lPal(userPalette); }
+
+  /* Modal helpers */
 
   /* Modal helpers */
   function sMo(h) {
@@ -3148,7 +3323,7 @@ const U = (() => {
 
   return {
     init, uCol, uTopt, bTB, lPal, palReset, palClear, palSort, palExport, palPNG,
-    newFile, mkNew, imgSize, aRsz, crop, trim,
+    newFile, mkNew, imgSize, aRsz, crop, trim, palSzUp, palSzDn,
     shiftPx: _lg(shiftPx),                          /* ← */
     briCon, prevBC, apBC, hueSat, prevHS, apHS, blurImg, prevBI, apBI,
     _adjCancel,
