@@ -55,6 +55,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
 #tl{grid-area:tl;display:flex;flex-direction:column;background:var(--bg1);border-top:1px solid var(--bd)}
 #tc{display:flex;align-items:center;gap:2px;padding:2px var(--sp3);border-bottom:1px solid var(--bd)}
 #tc button{background:var(--bg2);border:1px solid var(--bd);color:var(--tx);width:24px;height:20px;border-radius:2px;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center}#tc button:hover{background:var(--bg3)}#tc button.on{background:var(--accg);border-color:var(--acc)}
+#tc button.playing{background:var(--acc);color:#fff;border-color:var(--acc)}
 #fi{font-size:9px;color:var(--txd);margin-left:var(--sp3)}#fc{display:flex;align-items:center;gap:2px;margin-left:auto;font-size:9px;color:var(--txd)}
 #fc input{width:36px;background:var(--bg2);border:1px solid var(--bd);color:var(--tx);text-align:center;border-radius:2px;font-family:inherit;font-size:9px;padding:1px}
 #fs{flex:1;display:flex;align-items:stretch;overflow-x:auto;padding:2px var(--sp3);gap:2px}
@@ -114,6 +115,9 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
       <div onclick="U.stroke()">Stroke</div>
       <div onclick="U.replaceColor()">Replace Color</div>
       <div onclick="U.colorRange()">Color Range (Select)</div>
+      <div class="sep"></div>
+      <div onclick="U.curves()">Curves</div>
+      <div onclick="U.effectsPanel()">Effects Panel</div>
     </div></div>
     <div class="mi">Brush<div class="md">
       <div onclick="T.flipCB('h')">Flip Brush H</div><div onclick="T.flipCB('v')">Flip Brush V</div>
@@ -200,6 +204,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
     <button onclick="An.stop()">■</button>
     <span style="width:1px;height:14px;background:var(--bd)"></span>
     <button onclick="An.togOnion()" id="bo">◎</button>
+    <button onclick="An.togOnionAll()" id="boa" title="Onion: show ALL frames">∞</button>
     <button onclick="An.selAllF()">☐</button>
     <button onclick="U.tweenDlg()" style="font-size:8px;width:auto;padding:0 4px">Tw</button>
     <button onclick="An.moveBlockTo()" style="font-size:8px;width:auto;padding:0 4px" title="Move selected frames to position">⇥</button>
@@ -285,6 +290,7 @@ const BlobURLs = (() => {
 let _lockMsgTimer = 0;
 let _dirty = false;
 let _layerSync = false;
+let _pxMaskMode = false, _pxMaskCanvas = null, _pxMaskCtx = null, _pxMaskCol = '#ff000080';
 
 function _showLockMsg() {
   const ci = document.getElementById('ci');
@@ -302,12 +308,51 @@ function _lg(fn) {
   };
 }
 
+function togglePxMask() {
+  if (_pxMaskMode) {
+    /* EXIT mask mode → convert painted pixels to selection */
+    _pxMaskMode = false;
+    if (_pxMaskCanvas) {
+      const w = C.W, h = C.H;
+      const d = _pxMaskCtx.getImageData(0, 0, w, h).data;
+      let x0 = w, y0 = h, x1 = 0, y1 = 0, found = false;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        if (d[(y * w + x) * 4 + 3] > 0) {
+          found = true;
+          if (x < x0) x0 = x; if (y < y0) y0 = y;
+          if (x > x1) x1 = x; if (y > y1) y1 = y;
+        }
+      }
+      if (found) {
+        const sw = x1 - x0 + 1, sh = y1 - y0 + 1;
+        const mask = new Uint8Array(sw * sh);
+        for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++)
+          if (d[(y * w + x) * 4 + 3] > 0) mask[(y - y0) * sw + (x - x0)] = 1;
+        T.selection = { type: 'rect', x: x0, y: y0, w: sw, h: sh, mask };
+      }
+      _pxMaskCanvas = null; _pxMaskCtx = null;
+    }
+    C.render();
+    document.getElementById('ci').textContent = 'Mask → Selection';
+  } else {
+    /* ENTER mask mode */
+    _pxMaskMode = true;
+    _pxMaskCanvas = document.createElement('canvas');
+    _pxMaskCanvas.width = C.W; _pxMaskCanvas.height = C.H;
+    _pxMaskCtx = _pxMaskCanvas.getContext('2d');
+    C.render();
+    document.getElementById('ci').textContent = '🎭 MASK MODE — Paint pixels, press Q to finish';
+    document.getElementById('ci').style.color = 'var(--acc)';
+  }
+}
+
 /* ===== CORE CANVAS ===== */
 const C = (() => {
   let W = 320, H = 240, zm = 1, panX = 0, panY = 0;
   let grid = false, gsz = 8, bg = 'transparent';
   let gridColor = '#4488ff', gridAlpha = 0.25, gridThick = 1;
   let pCol = '#000000', sCol = '#ffffff', ckp = null, ckSize = 8;
+  let ckCol1 = '', ckCol2 = '';
   let symHP = 0.5, symVP = 0.5;
   let guideH = false, guideV = false, guideHY = 0.5, guideVX = 0.5;
   let tiledMode = 'off';
@@ -324,9 +369,9 @@ const C = (() => {
     c2.width = sz * 2; c2.height = sz * 2;
     const x = c2.getContext('2d');
     const cs = getComputedStyle(document.documentElement);
-    x.fillStyle = cs.getPropertyValue('--ck1').trim() || '#606070';
+    x.fillStyle = ckCol1 || cs.getPropertyValue('--ck1').trim() || '#606070';
     x.fillRect(0, 0, sz * 2, sz * 2);
-    x.fillStyle = cs.getPropertyValue('--ck2').trim() || '#505060';
+    x.fillStyle = ckCol2 || cs.getPropertyValue('--ck2').trim() || '#505060';
     x.fillRect(sz, 0, sz, sz);
     x.fillRect(0, sz, sz, sz);
     ckp = mx.createPattern(c2, 'repeat');
@@ -395,17 +440,30 @@ const C = (() => {
 
     /* Onion skin */
     if (An.onion) {
-      if (ci > 0) {
-        mx.globalAlpha = 0.25;
-        for (const ly of frames[ci - 1].layers)
-          if (ly.visible) mx.drawImage(ly.canvas, 0, 0);
+      if (An.onionAll) {
+        /* Show ALL frames as onion (except current) */
+        for (let fi = 0; fi < frames.length; fi++) {
+          if (fi === ci) continue;
+          const dist = Math.abs(fi - ci);
+          const alpha = Math.max(0.04, 0.3 / dist);
+          mx.globalAlpha = alpha;
+          for (const ly of frames[fi].layers)
+            if (ly.visible) mx.drawImage(ly.canvas, 0, 0);
+        }
         mx.globalAlpha = 1;
-      }
-      if (ci < frames.length - 1) {
-        mx.globalAlpha = 0.15;
-        for (const ly of frames[ci + 1].layers)
-          if (ly.visible) mx.drawImage(ly.canvas, 0, 0);
-        mx.globalAlpha = 1;
+      } else {
+        if (ci > 0) {
+          mx.globalAlpha = 0.25;
+          for (const ly of frames[ci - 1].layers)
+            if (ly.visible) mx.drawImage(ly.canvas, 0, 0);
+          mx.globalAlpha = 1;
+        }
+        if (ci < frames.length - 1) {
+          mx.globalAlpha = 0.15;
+          for (const ly of frames[ci + 1].layers)
+            if (ly.visible) mx.drawImage(ly.canvas, 0, 0);
+          mx.globalAlpha = 1;
+        }
       }
     }
 
@@ -586,6 +644,14 @@ const C = (() => {
       ox.restore();
     }
 
+/* Pixel Mask overlay */
+    if (_pxMaskMode && _pxMaskCanvas) {
+      mx.save();
+      mx.globalAlpha = 0.5;
+      mx.drawImage(_pxMaskCanvas, 0, 0);
+      mx.restore();
+    }
+
     /* Info bar */
     document.getElementById('ci').textContent =
       `${Math.round(zm * 100)}% | ${W}×${H}${tiledMode !== 'off' ? ' [Tiled:' + tiledMode + ']' : ''}`;
@@ -764,6 +830,8 @@ const C = (() => {
     get gridThick() { return gridThick; }, set gridThick(v) { gridThick = v; },
     get ckSize() { return ckSize; },
     set ckSize(v) { ckSize = v; mkCk(); render(); },
+    get ckCol1() { return ckCol1; }, set ckCol1(v) { ckCol1 = v; mkCk(); render(); },
+    get ckCol2() { return ckCol2; }, set ckCol2(v) { ckCol2 = v; mkCk(); render(); },
     get tiledMode() { return tiledMode; },
     set tiledMode(v) { tiledMode = v; render(); },
     init, render, scheduleRender, s2c, c2s, sZ, zoomAt, zIn, zOut, zFit, z1x,
@@ -776,7 +844,7 @@ const T = (() => {
   let cur = 'brush', bSz = 1, soft = 0, tol = 32, bOp = 100;
   let ppx = true, shM = 'outline', bShape = 'circle';
   let symH = false, symV = false, sym45 = false, sym45n = false;
-  let mouseH = 0, gradT = 'linear', gradDither = false, gradDitherLv = 4, lockX = false, lockY = false, smInt = 5;
+  let mouseH = 0, gradT = 'linear', gradDither = false, gradDitherLv = 4, gradDitherSt = 'bayer', lockX = false, lockY = false, smInt = 5;
   let sel = null, clip = null, floating = null, tfMode = false, tfPixel = false, tfAction = 'auto';
   let drag = false, ds = null, lp = null, mo = null, tc = null, tx = null;
   let customBrush = null, selFrames = new Set();
@@ -1077,17 +1145,32 @@ const T = (() => {
       const id = ctx.getImageData(0, 0, w, h), d = id.data;
       const levels = Math.max(2, Math.min(32, gradDitherLv));
       const step = 255 / (levels - 1);
-      const B = [
-         0,32, 8,40, 2,34,10,42, 48,16,56,24,50,18,58,26,
-        12,44, 4,36,14,46, 6,38, 60,28,52,20,62,30,54,22,
-         3,35,11,43, 1,33, 9,41, 51,19,59,27,49,17,57,25,
-        15,47, 7,39,13,45, 5,37, 63,31,55,23,61,29,53,21
-      ];
+      const B8 = [0,32,8,40,2,34,10,42,48,16,56,24,50,18,58,26,12,44,4,36,14,46,6,38,60,28,52,20,62,30,54,22,3,35,11,43,1,33,9,41,51,19,59,27,49,17,57,25,15,47,7,39,13,45,5,37,63,31,55,23,61,29,53,21];
+      const style = gradDitherSt || 'bayer';
       for (let py = 0; py < h; py++) {
         for (let px = 0; px < w; px++) {
           const i = (py * w + px) * 4;
           if (!d[i + 3]) continue;
-          const thr = (B[(py & 7) * 8 + (px & 7)] / 64 - 0.5) * step;
+          let thr;
+          if (style === 'bayer') {
+            thr = (B8[(py & 7) * 8 + (px & 7)] / 64 - 0.5) * step;
+          } else if (style === 'noise') {
+            thr = (Math.random() - 0.5) * step;
+          } else if (style === 'halftone') {
+            const cx = (px % 6) - 3, cy = (py % 6) - 3;
+            thr = (Math.sqrt(cx*cx + cy*cy) / 4.24 - 0.5) * step;
+          } else if (style === 'cross') {
+            const mx = px % 4, my = py % 4;
+            const cval = (mx === 1 || mx === 2 || my === 1 || my === 2) ? 0.7 : 0.2;
+            thr = (cval - 0.5) * step;
+          } else if (style === 'diamond') {
+            const mx = Math.abs((px % 8) - 4), my = Math.abs((py % 8) - 4);
+            thr = ((mx + my) / 8 - 0.5) * step;
+          } else if (style === 'lines') {
+            thr = ((py % 4) / 4 - 0.5) * step;
+          } else {
+            thr = (B8[(py & 7) * 8 + (px & 7)] / 64 - 0.5) * step;
+          }
           for (let ch = 0; ch < 3; ch++) {
             d[i+ch] = Math.max(0, Math.min(255, Math.round((d[i+ch] + thr) / step) * step));
           }
@@ -1196,7 +1279,7 @@ const T = (() => {
   function commitFloat() {
     if (!floating) return;
     const la = al();
-    if (!la) return;
+    if (!la) { floating = null; tfMode = false; sel = null; C.render(); return; }
     if (la.locked) { _showLockMsg(); return; }
     Hi.push();
     const fw = floating.tw || floating.canvas.width;
@@ -1208,8 +1291,8 @@ const T = (() => {
     la.ctx.drawImage(floating.canvas, -fw / 2, -fh / 2, fw, fh);
     la.ctx.restore();
     la.ctx.imageSmoothingEnabled = false;
-    floating = null; tfMode = false; sel = null;
-    C.render(); Ly.ui();
+    floating = null; tfMode = false; tfAction = 'auto'; sel = null;
+    C.render(); Ly.ui(); U.uTopt();
   }
 
   function floatFromSel() {
@@ -1317,10 +1400,23 @@ const T = (() => {
     const pos = C.s2c(e.clientX, e.clientY);
     const isR = e.button === 2, isMid = e.button === 1;
     const col = isR ? C.sc : C.pc;
-    drag = true; ds = { ...pos }; lp = { ...pos }; mo = null;
+   drag = true; ds = { ...pos }; lp = { ...pos }; mo = null;
     if (_shiftPrev) _shiftPrev = null;
 
     if (isMid || spaceDown) { mo = { pan: true }; return; }
+
+    /* Pixel Mask mode painting */
+    if (_pxMaskMode && _pxMaskCtx && e.button === 0) {
+      const px = Math.floor(pos.x), py = Math.floor(pos.y);
+      if (px >= 0 && py >= 0 && px < C.W && py < C.H) {
+        if (e.button === 0) {
+          _pxMaskCtx.fillStyle = _pxMaskCol;
+          _pxMaskCtx.fillRect(px, py, bSz, bSz);
+        }
+        C.render();
+      }
+      return;
+    }
 
     if (e.altKey) {
       const symHit = hitSymAxis(e.clientX, e.clientY);
@@ -1492,6 +1588,20 @@ const T = (() => {
       if (lockY) pos.x = ds.x;
     }
     
+    /* Pixel Mask dragging */
+    if (_pxMaskMode && _pxMaskCtx && (e.buttons & 1)) {
+      const px = Math.floor(pos.x), py = Math.floor(pos.y);
+      if (px >= 0 && py >= 0 && px < C.W && py < C.H) {
+        _pxMaskCtx.fillStyle = _pxMaskCol;
+        const x0 = Math.floor(lp.x), y0 = Math.floor(lp.y);
+        const dx = Math.abs(px-x0), dy = Math.abs(py-y0), sx = x0<px?1:-1, sy = y0<py?1:-1;
+        let ex = dx-dy, cx2 = x0, cy2 = y0;
+        while (true) { _pxMaskCtx.fillRect(cx2, cy2, bSz, bSz); if(cx2===px&&cy2===py)break; const e2=2*ex; if(e2>-dy){ex-=dy;cx2+=sx;} if(e2<dx){ex+=dx;cy2+=sy;} }
+        lp = { ...pos }; C.render();
+      }
+      return;
+    }
+
     if ((mo && mo.pan) || (e.buttons & 4) || spaceDown) {
       C.px += e.movementX; C.py += e.movementY; C.render(); return;
     }
@@ -1898,7 +2008,7 @@ const T = (() => {
   function set(t) {
     if (floating) commitFloat();
     tfMode = false;
-    if (!isSel(t) && sel) sel = null;
+    /* Keep selection active — user may want to constrain brush/fill to selection area */
     cur = t; tc = null; tx = null; mo = null; ppPrev = null; ppPend = null;
     document.querySelectorAll('.tb').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
     U.uTopt(); C.render();
@@ -1944,6 +2054,7 @@ const T = (() => {
     get gradType() { return gradT; }, set gradType(v) { gradT = v; },
     get gradDither() { return gradDither; }, set gradDither(v) { gradDither = v; },
     get gradDitherLv() { return gradDitherLv; }, set gradDitherLv(v) { gradDitherLv = v; },
+    get gradDitherSt() { return gradDitherSt; }, set gradDitherSt(v) { gradDitherSt = v; },
     get floating() { return floating; },
     get tfMode() { return tfMode; },
     get tfPixel() { return tfPixel; }, set tfPixel(v) { tfPixel = v; C.render(); },
@@ -2206,7 +2317,7 @@ const Ly = (() => {
 
 /* ===== ANIMATION ===== */
 const An = (() => {
-  let frames = [], cf = 0, playing = false, timer = null, onion = false;
+  let frames = [], cf = 0, playing = false, timer = null, onion = false, onionAll = false;
 
   function mkF() {
     return { layers: [Ly.mk('Layer 1')], activeLayer: 0, duration: 100 };
@@ -2295,6 +2406,7 @@ const An = (() => {
     playing = true;
     document.getElementById('bp').textContent = '⏸';
     document.getElementById('bp').classList.add('on');
+    document.getElementById('bp').classList.add('playing');
     _ds = true; tick();
   }
 
@@ -2313,12 +2425,24 @@ const An = (() => {
     playing = false; clearTimeout(timer);
     document.getElementById('bp').textContent = '▶';
     document.getElementById('bp').classList.remove('on');
+    document.getElementById('bp').classList.remove('playing');
     if (_ds) { _ds = false; cf = 0; uStrip(); Ly.ui(); C.render(); syncDur(); }
   }
 
   function togOnion() {
     onion = !onion;
+    if (!onion) onionAll = false;
     document.getElementById('bo').classList.toggle('on', onion);
+    const oab = document.getElementById('boa');
+    if (oab) oab.classList.toggle('on', onionAll);
+    C.render();
+  }
+
+  function togOnionAll() {
+    if (!onion) { onion = true; document.getElementById('bo').classList.add('on'); }
+    onionAll = !onionAll;
+    const oab = document.getElementById('boa');
+    if (oab) oab.classList.toggle('on', onionAll);
     C.render();
   }
 
@@ -2423,9 +2547,10 @@ const An = (() => {
   return {
     get frames() { return frames; }, set frames(v) { frames = v; },
     get cf() { return cf; }, set cf(v) { cf = v; },
-    get onion() { return onion; }, get playing() { return playing; },
+    get onion() { return onion; }, get onionAll() { return onionAll; },
+    get playing() { return playing; },
     mkF, init, addF, dupF, rmF, goTo, prev, next, moveL, moveR,
-    selAllF, pp, stop, togOnion, uStrip, syncDur, tween, moveBlockTo
+    selAllF, pp, stop, togOnion, togOnionAll, uStrip, syncDur, tween, moveBlockTo
   };
 })();
 
@@ -2444,7 +2569,7 @@ const Hi = (() => {
   }
 
   function snap() {
-    const out = { cf: An.cf, frames: [] };
+    const out = { cf: An.cf, w: C.W, h: C.H, frames: [] };
     for (const f of An.frames) {
       const fl = { al: f.activeLayer, dur: f.duration, layers: [] };
       for (const ly of f.layers) {
@@ -2459,11 +2584,17 @@ const Hi = (() => {
   }
 
   function restore(s) {
+    /* Restore canvas dimensions first — critical for trim/crop undo */
+    const rw = s.w || C.W, rh = s.h || C.H;
+    if (rw !== C.W || rh !== C.H) {
+      C.init(rw, rh, C.bg);
+    }
     An.frames = [];
     for (const fs of s.frames) {
       const fr = { layers: [], activeLayer: fs.al, duration: fs.dur || 100 };
       for (const ls of fs.layers) {
         const ly = Ly.mk(ls.n);
+        ly.canvas.width = rw; ly.canvas.height = rh;
         ly.opacity = ls.o; ly.visible = ls.v; ly.locked = ls.k;
         ly.ctx.drawImage(ls.c, 0, 0);
         fr.layers.push(ly);
@@ -2471,7 +2602,7 @@ const Hi = (() => {
       An.frames.push(fr);
     }
     An.cf = Math.min(s.cf, An.frames.length - 1);
-    C.render(); Ly.ui(); An.uStrip();
+    C.zFit(); C.render(); Ly.ui(); An.uStrip();
   }
 
   function push() {
@@ -2527,6 +2658,8 @@ const U = (() => {
     { id: 'text', l: 'Text', k: 'T', i: '<text x="5" y="17" font-size="16" font-weight="bold" fill="currentColor" stroke="none">T</text>' },
     { s: 1 },
     { id: 'magnifier', l: 'Zoom', k: 'Z', i: '<circle cx="10" cy="10" r="6"/><line x1="14.5" y1="14.5" x2="19" y2="19"/>' },
+    { id: 'pixel-mask', l: 'Mask', k: 'Q', i: '<rect x="4" y="4" width="14" height="14" rx="2" fill="none" stroke-dasharray="2 1"/><circle cx="11" cy="11" r="3" fill="currentColor" stroke="none"/>' },
+    { s: 1 },
     { id: 'pan', l: 'Pan', k: 'H', i: '<circle cx="11" cy="11" r="3"/><path d="M11 3v5M11 15v5M3 11h5M15 11h5"/>' },
   ];
 
@@ -2540,7 +2673,7 @@ const U = (() => {
       b.dataset.tool = t.id;
       b.title = t.l + (t.k ? ` (${t.k})` : '');
       b.innerHTML = `<svg viewBox="0 0 22 22">${t.i}</svg>`;
-      b.onclick = () => T.set(t.id);
+      b.onclick = () => { if (t.id === 'pixel-mask') { togglePxMask(); return; } T.set(t.id); };
       tb.append(b);
     }
   }
@@ -2565,6 +2698,10 @@ const U = (() => {
       let gh = `<label>Type<select onchange="T.gradType=this.value"><option value="linear"${T.gradType === 'linear' ? ' selected' : ''}>Linear</option><option value="radial"${T.gradType === 'radial' ? ' selected' : ''}>Radial</option></select></label>`;
       gh += `<label>Op<input type="range" min="1" max="100" value="${T.brushOpacity}" oninput="T.brushOpacity=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.brushOpacity}</span></label>`;
       gh += `<label>Dither<input type="checkbox" ${T.gradDither ? 'checked' : ''} onchange="T.gradDither=this.checked;U.uTopt()"></label>`;
+      if (T.gradDither) {
+        gh += `<label>Lvl<input type="range" min="2" max="16" value="${T.gradDitherLv}" oninput="T.gradDitherLv=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.gradDitherLv}</span></label>`;
+        gh += `<label><select onchange="T.gradDitherSt=this.value"><option value="bayer"${T.gradDitherSt==='bayer'?' selected':''}>Bayer</option><option value="noise"${T.gradDitherSt==='noise'?' selected':''}>Noise</option><option value="halftone"${T.gradDitherSt==='halftone'?' selected':''}>Halftone</option><option value="diamond"${T.gradDitherSt==='diamond'?' selected':''}>Diamond</option><option value="cross"${T.gradDitherSt==='cross'?' selected':''}>Cross</option><option value="lines"${T.gradDitherSt==='lines'?' selected':''}>Lines</option></select></label>`;
+      }
       if (T.gradDither) gh += `<label>Lvl<input type="range" min="2" max="16" value="${T.gradDitherLv}" oninput="T.gradDitherLv=+this.value;this.nextElementSibling.textContent=this.value" title="Color levels (fewer=more retro)"><span>${T.gradDitherLv}</span></label>`;
       b.innerHTML = gh;
     }
@@ -2861,7 +2998,7 @@ const U = (() => {
   }
 
   function checkerCfg() {
-    sMo(`<h3>Checker</h3><label>Size<input type="number" id="cksz" value="${C.ckSize}" min="1" max="64"></label><div class="mb"><button class="bsc" onclick="U.cMo()">Cancel</button><button class="bp" onclick="C.ckSize=Math.max(1,+document.getElementById('cksz').value||8);U.cMo()">OK</button></div>`);
+    sMo(`<h3>Checker</h3><label>Size<input type="number" id="cksz" value="${C.ckSize}" min="1" max="64"></label><label>Color 1<input type="color" id="ckc1" value="${C.ckCol1 || '#606070'}" style="width:40px;height:20px;padding:0"></label><label>Color 2<input type="color" id="ckc2" value="${C.ckCol2 || '#505060'}" style="width:40px;height:20px;padding:0"></label><label><button class="bsc" style="font-size:8px;padding:1px 4px" onclick="document.getElementById('ckc1').value='';document.getElementById('ckc2').value=''">Reset to Theme</button></label><div class="mb"><button class="bsc" onclick="U.cMo()">Cancel</button><button class="bp" onclick="C.ckSize=Math.max(1,+document.getElementById('cksz').value||8);C.ckCol1=document.getElementById('ckc1').value;C.ckCol2=document.getElementById('ckc2').value;U.cMo()">OK</button></div>`);
   }
 
   function tiledCfg() {
@@ -2900,6 +3037,230 @@ const U = (() => {
 <label>Scatter<input type="range" id="bs_sc" min="0" max="20" value="${T.bScatter}" style="width:100px" oninput="this.nextElementSibling.textContent=this.value"><span>${T.bScatter}</span></label>
 <p style="font-size:8px;color:var(--txd)">Random offset for spray/texture effects.</p>
 <div class="mb"><button class="bsc" onclick="U.cMo()">Cancel</button><button class="bp" onclick="T.bSpacing=+document.getElementById('bs_sp').value;T.bMinDiam=+document.getElementById('bs_md').value;T.bScatter=+document.getElementById('bs_sc').value;U.cMo()">OK</button></div>`);
+  }
+
+  function curves() {
+    if (!_adjSv()) return;
+    sMo(`<h3>Curves</h3>
+<canvas id="cv_crv" width="256" height="256" style="background:#111;border:1px solid var(--bd);cursor:crosshair;display:block;margin:0 auto 8px"></canvas>
+<p style="font-size:8px;color:var(--txd);text-align:center">Click to add points. Drag to adjust. Right-click to remove.</p>
+<label>Channel<select id="cv_ch"><option value="rgb">RGB</option><option value="r">Red</option><option value="g">Green</option><option value="b">Blue</option></select></label>
+<div class="mb"><button class="bsc" onclick="U._adjCancel()">Cancel</button><button class="bp" onclick="U.apCurves()">Apply</button></div>`);
+    /* Initialize curves state */
+    const cvs = document.getElementById('cv_crv');
+    const cx = cvs.getContext('2d');
+    const pts = { rgb: [{x:0,y:0},{x:255,y:255}], r: [{x:0,y:0},{x:255,y:255}], g: [{x:0,y:0},{x:255,y:255}], b: [{x:0,y:0},{x:255,y:255}] };
+    let dragPt = null, curCh = 'rgb';
+    window._cvPts = pts;
+    window._cvCh = () => curCh;
+    function drawCurve() {
+      cx.clearRect(0, 0, 256, 256);
+      cx.strokeStyle = '#333'; cx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) { const p = i * 64; cx.beginPath(); cx.moveTo(p,0); cx.lineTo(p,256); cx.stroke(); cx.beginPath(); cx.moveTo(0,p); cx.lineTo(256,p); cx.stroke(); }
+      cx.strokeStyle = '#555'; cx.setLineDash([2,2]); cx.beginPath(); cx.moveTo(0,256); cx.lineTo(256,0); cx.stroke(); cx.setLineDash([]);
+      const lut = buildLUT(pts[curCh]);
+      const col = curCh === 'r' ? '#f44' : curCh === 'g' ? '#4f4' : curCh === 'b' ? '#44f' : '#fff';
+      cx.strokeStyle = col; cx.lineWidth = 2; cx.beginPath();
+      for (let i = 0; i < 256; i++) { const y = 255 - lut[i]; if (i === 0) cx.moveTo(i, y); else cx.lineTo(i, y); }
+      cx.stroke();
+      for (const p of pts[curCh]) { cx.fillStyle = col; cx.beginPath(); cx.arc(p.x, 255 - p.y, 5, 0, Math.PI * 2); cx.fill(); cx.strokeStyle = '#000'; cx.lineWidth = 1; cx.stroke(); }
+      applyCurvesPreview();
+    }
+    function buildLUT(points) {
+      const sorted = [...points].sort((a, b) => a.x - b.x);
+      const lut = new Uint8Array(256);
+      for (let i = 0; i < 256; i++) {
+        let lo = sorted[0], hi = sorted[sorted.length - 1];
+        for (let j = 0; j < sorted.length - 1; j++) { if (sorted[j].x <= i && sorted[j+1].x >= i) { lo = sorted[j]; hi = sorted[j+1]; break; } }
+        const range = hi.x - lo.x;
+        const t = range > 0 ? (i - lo.x) / range : 0;
+        const st = t * t * (3 - 2 * t);
+        lut[i] = Math.max(0, Math.min(255, Math.round(lo.y + (hi.y - lo.y) * st)));
+      }
+      return lut;
+    }
+    function applyCurvesPreview() {
+      const la = T.activeLayer(); if (!la || !_adjBk) return;
+      const src = _adjBk.data;
+      const id = la.ctx.createImageData(C.W, C.H), d = id.data;
+      const lutR = buildLUT(pts.r), lutG = buildLUT(pts.g), lutB = buildLUT(pts.b), lutRGB = buildLUT(pts.rgb);
+      for (let i = 0; i < src.length; i += 4) {
+        d[i + 3] = src[i + 3];
+        if (!src[i + 3]) continue;
+        d[i] = lutR[lutRGB[src[i]]]; d[i+1] = lutG[lutRGB[src[i+1]]]; d[i+2] = lutB[lutRGB[src[i+2]]];
+      }
+      la.ctx.putImageData(id, 0, 0); C.render();
+    }
+    window._cvBuildLUT = buildLUT;
+    cvs.onmousedown = e => {
+      const r = cvs.getBoundingClientRect();
+      const mx = Math.round(e.clientX - r.left), my = Math.round(255 - (e.clientY - r.top));
+      if (e.button === 2) { const cp = pts[curCh]; if (cp.length > 2) { let best = -1, bd = 1e9; for (let i = 1; i < cp.length - 1; i++) { const d = Math.abs(cp[i].x - mx) + Math.abs(cp[i].y - my); if (d < bd) { bd = d; best = i; } } if (best > 0 && bd < 20) cp.splice(best, 1); } drawCurve(); return; }
+      let found = -1;
+      for (let i = 0; i < pts[curCh].length; i++) { if (Math.abs(pts[curCh][i].x - mx) < 10 && Math.abs(pts[curCh][i].y - my) < 10) { found = i; break; } }
+      if (found >= 0) { dragPt = found; } else { pts[curCh].push({x: mx, y: my}); pts[curCh].sort((a,b) => a.x - b.x); dragPt = pts[curCh].findIndex(p => p.x === mx && p.y === my); }
+      drawCurve();
+    };
+    cvs.onmousemove = e => { if (dragPt === null) return; const r = cvs.getBoundingClientRect(); const p = pts[curCh][dragPt]; if (dragPt > 0 && dragPt < pts[curCh].length - 1) p.x = Math.max(1, Math.min(254, Math.round(e.clientX - r.left))); p.y = Math.max(0, Math.min(255, Math.round(255 - (e.clientY - r.top)))); drawCurve(); };
+    cvs.onmouseup = () => { dragPt = null; };
+    cvs.oncontextmenu = e => e.preventDefault();
+    document.getElementById('cv_ch').onchange = function() { curCh = this.value; drawCurve(); };
+    drawCurve();
+  }
+
+  function effectsPanel() {
+    if (!_adjSv()) return;
+    sMo(`<h3>Effects Panel</h3>
+<label>Effect<select id="fx_type">
+<option value="bayer_dither">Bayer Dither</option>
+<option value="floyd_dither">Floyd-Steinberg Dither</option>
+<option value="atkinson_dither">Atkinson Dither</option>
+<option value="golden_dither">Golden Ratio Dither</option>
+<option value="ordered_dots">Ordered Dots</option>
+<option value="pixelate">Pixelate</option>
+<option value="posterize">Posterize</option>
+<option value="vhs_glitch">VHS Glitch</option>
+<option value="chromatic">Chromatic Aberration</option>
+<option value="scanlines">CRT Scanlines</option>
+</select></label>
+<label>Intensity<input type="range" id="fx_int" min="1" max="100" value="50" style="width:120px" oninput="this.nextElementSibling.textContent=this.value;U.prevFx()"><span>50</span></label>
+<label>Levels<input type="range" id="fx_lv" min="2" max="32" value="4" style="width:100px" oninput="this.nextElementSibling.textContent=this.value;U.prevFx()"><span>4</span></label>
+<label>Scale<input type="range" id="fx_sc" min="1" max="32" value="4" style="width:100px" oninput="this.nextElementSibling.textContent=this.value;U.prevFx()"><span>4</span></label>
+<label>Offset<input type="range" id="fx_off" min="0" max="50" value="5" style="width:100px" oninput="this.nextElementSibling.textContent=this.value;U.prevFx()"><span>5</span></label>
+<label>Golden φ<input type="checkbox" id="fx_phi" onchange="U.prevFx()"></label>
+<div class="mb"><button class="bsc" onclick="U._adjCancel()">Cancel</button><button class="bsc" onclick="U.prevFx()">Preview</button><button class="bp" onclick="U.apEffect()">Apply</button></div>`);
+    setTimeout(() => prevFx(), 50);
+  }
+
+  function prevFx() {
+    const la = T.activeLayer(); if (!la || !_adjBk) return;
+    const fx = document.getElementById('fx_type').value;
+    const intensity = +document.getElementById('fx_int').value / 100;
+    const levels = +document.getElementById('fx_lv').value;
+    const scale = +document.getElementById('fx_sc').value;
+    const offset = +document.getElementById('fx_off').value;
+    const usePhi = document.getElementById('fx_phi').checked;
+    const PHI = 1.6180339887;
+    const w = C.W, h = C.H, src = _adjBk.data;
+    const id = la.ctx.createImageData(w, h), d = id.data;
+    for (let i = 0; i < src.length; i++) d[i] = src[i];
+
+    const step = levels > 1 ? 255 / (levels - 1) : 255;
+    const B8 = [0,32,8,40,2,34,10,42,48,16,56,24,50,18,58,26,12,44,4,36,14,46,6,38,60,28,52,20,62,30,54,22,3,35,11,43,1,33,9,41,51,19,59,27,49,17,57,25,15,47,7,39,13,45,5,37,63,31,55,23,61,29,53,21];
+
+    if (fx === 'bayer_dither') {
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4; if (!d[i+3]) continue;
+        const thr = (B8[(y & 7) * 8 + (x & 7)] / 64 - 0.5) * step * intensity;
+        for (let ch = 0; ch < 3; ch++) d[i+ch] = Math.max(0, Math.min(255, Math.round((d[i+ch] + thr) / step) * step));
+      }
+    } else if (fx === 'floyd_dither') {
+      const buf = new Float32Array(w * h * 3);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = (y*w+x); const si = i*4; buf[i*3]=d[si]; buf[i*3+1]=d[si+1]; buf[i*3+2]=d[si+2]; }
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i = y*w+x, si = i*4; if (!d[si+3]) continue;
+        for (let ch = 0; ch < 3; ch++) {
+          const old = buf[i*3+ch]; const nv = Math.round(old / step) * step;
+          buf[i*3+ch] = nv; const err = (old - nv) * intensity;
+          if (x+1<w) buf[(i+1)*3+ch]+=err*7/16;
+          if (y+1<h) { if (x>0) buf[(i+w-1)*3+ch]+=err*3/16; buf[(i+w)*3+ch]+=err*5/16; if (x+1<w) buf[(i+w+1)*3+ch]+=err*1/16; }
+        }
+      }
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i=y*w+x,si=i*4; if(!d[si+3])continue; d[si]=Math.max(0,Math.min(255,Math.round(buf[i*3]))); d[si+1]=Math.max(0,Math.min(255,Math.round(buf[i*3+1]))); d[si+2]=Math.max(0,Math.min(255,Math.round(buf[i*3+2]))); }
+    } else if (fx === 'atkinson_dither') {
+      const buf = new Float32Array(w * h * 3);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i=y*w+x,si=i*4; buf[i*3]=d[si]; buf[i*3+1]=d[si+1]; buf[i*3+2]=d[si+2]; }
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i=y*w+x,si=i*4; if(!d[si+3])continue;
+        for (let ch = 0; ch < 3; ch++) {
+          const old=buf[i*3+ch]; const nv=Math.round(old/step)*step; buf[i*3+ch]=nv;
+          const err=(old-nv)*intensity/8;
+          const nb=[[1,0],[2,0],[-1,1],[0,1],[1,1],[0,2]];
+          for (const [dx,dy] of nb) { const nx=x+dx,ny=y+dy; if(nx>=0&&nx<w&&ny>=0&&ny<h) buf[(ny*w+nx)*3+ch]+=err; }
+        }
+      }
+      for (let y=0;y<h;y++) for (let x=0;x<w;x++) { const i=y*w+x,si=i*4; if(!d[si+3])continue; for(let ch=0;ch<3;ch++) d[si+ch]=Math.max(0,Math.min(255,Math.round(buf[i*3+ch]))); }
+    } else if (fx === 'golden_dither') {
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i=(y*w+x)*4; if(!d[i+3])continue;
+        const gx = (x * PHI) % 1, gy = (y * PHI) % 1;
+        const thr = (((gx + gy * PHI) % 1) - 0.5) * step * intensity;
+        for (let ch=0;ch<3;ch++) d[i+ch]=Math.max(0,Math.min(255,Math.round((d[i+ch]+thr)/step)*step));
+      }
+    } else if (fx === 'ordered_dots') {
+      const sz = Math.max(2, scale);
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const i=(y*w+x)*4; if(!d[i+3])continue;
+        const cx2=(x%sz)-sz/2+0.5, cy2=(y%sz)-sz/2+0.5;
+        const dist=Math.sqrt(cx2*cx2+cy2*cy2)/(sz*0.707);
+        const thr=(dist-0.5)*step*intensity;
+        for (let ch=0;ch<3;ch++) d[i+ch]=Math.max(0,Math.min(255,Math.round((d[i+ch]+thr)/step)*step));
+      }
+    } else if (fx === 'pixelate') {
+      const sz = Math.max(2, scale);
+      for (let by = 0; by < h; by += sz) for (let bx = 0; bx < w; bx += sz) {
+        let sr=0,sg=0,sb=0,cnt=0;
+        for (let dy=0;dy<sz&&by+dy<h;dy++) for (let dx=0;dx<sz&&bx+dx<w;dx++) { const i=((by+dy)*w+(bx+dx))*4; if(d[i+3]) { sr+=d[i]; sg+=d[i+1]; sb+=d[i+2]; cnt++; } }
+        if (!cnt) continue;
+        sr=Math.round(sr/cnt); sg=Math.round(sg/cnt); sb=Math.round(sb/cnt);
+        for (let dy=0;dy<sz&&by+dy<h;dy++) for (let dx=0;dx<sz&&bx+dx<w;dx++) { const i=((by+dy)*w+(bx+dx))*4; if(d[i+3]) { d[i]=sr; d[i+1]=sg; d[i+2]=sb; } }
+      }
+    } else if (fx === 'posterize') {
+      for (let i=0;i<d.length;i+=4) { if(!d[i+3])continue; for(let ch=0;ch<3;ch++) d[i+ch]=Math.round(d[i+ch]/step)*step; }
+    } else if (fx === 'vhs_glitch') {
+      for (let y=0;y<h;y++) { const shift=Math.round((Math.random()-0.5)*offset*intensity*2);
+        for (let x=0;x<w;x++) { const si=(y*w+x)*4, sx=Math.max(0,Math.min(w-1,x+shift)); const gi=(y*w+sx)*4;
+          d[si]=src[gi]; d[si+1]=src[Math.max(0,(y*w+Math.min(w-1,x+shift+Math.round(offset/2)))*4+1)]; d[si+2]=src[Math.max(0,(y*w+Math.max(0,x+shift-Math.round(offset/2)))*4+2)]; d[si+3]=src[si+3];
+        }
+      }
+    } else if (fx === 'chromatic') {
+      const off = Math.round(offset * intensity);
+      for (let y=0;y<h;y++) for (let x=0;x<w;x++) { const i=(y*w+x)*4;
+        d[i]=src[(y*w+Math.min(w-1,x+off))*4]||0; d[i+1]=src[i+1]; d[i+2]=src[(y*w+Math.max(0,x-off))*4+2]||0; d[i+3]=src[i+3];
+      }
+    } else if (fx === 'scanlines') {
+      const gap = Math.max(2, scale);
+      for (let y=0;y<h;y++) { const dark=y%gap===0?intensity:0;
+        for (let x=0;x<w;x++) { const i=(y*w+x)*4; if(!d[i+3])continue;
+          d[i]=Math.max(0,Math.round(d[i]*(1-dark))); d[i+1]=Math.max(0,Math.round(d[i+1]*(1-dark))); d[i+2]=Math.max(0,Math.round(d[i+2]*(1-dark)));
+        }
+      }
+    }
+    if (usePhi && !['golden_dither','vhs_glitch','chromatic'].includes(fx)) {
+      for (let y=0;y<h;y++) for (let x=0;x<w;x++) {
+        const i=(y*w+x)*4; if(!d[i+3])continue;
+        const keep=((Math.floor(x/PHI)+Math.floor(y/PHI))%2===0);
+        if (!keep) { const blend=0.5; for(let ch=0;ch<3;ch++) d[i+ch]=Math.round(d[i+ch]*blend+src[i+ch]*(1-blend)); }
+      }
+    }
+    la.ctx.putImageData(id, 0, 0); C.render();
+  }
+
+  function apEffect() {
+    const la = T.activeLayer();
+    if (!la || !_adjBk) { _adjBk = null; cMo(); return; }
+    la.ctx.putImageData(_adjBk, 0, 0);
+    Hi.push(); prevFx();
+    _adjBk = null; cMo(); Ly.ui();
+  }
+
+  function apCurves() {
+    const la = T.activeLayer();
+    if (!la || !_adjBk) { _adjBk = null; cMo(); return; }
+    la.ctx.putImageData(_adjBk, 0, 0);
+    Hi.push();
+    /* Re-apply the curves */
+    const pts = window._cvPts;
+    const buildLUT = window._cvBuildLUT;
+    const src = la.ctx.getImageData(0, 0, C.W, C.H);
+    const d = src.data;
+    const lutR = buildLUT(pts.r), lutG = buildLUT(pts.g), lutB = buildLUT(pts.b), lutRGB = buildLUT(pts.rgb);
+    for (let i = 0; i < d.length; i += 4) {
+      if (!d[i + 3]) continue;
+      d[i] = lutR[lutRGB[d[i]]]; d[i+1] = lutG[lutRGB[d[i+1]]]; d[i+2] = lutB[lutRGB[d[i+2]]];
+    }
+    la.ctx.putImageData(src, 0, 0);
+    _adjBk = null; cMo(); C.render(); Ly.ui();
   }
 
   function togTheme() {
@@ -3510,6 +3871,7 @@ const U = (() => {
       if (k === KEYS.play) { An.pp(); return; }
       if (k === KEYS.onionSkin) { An.togOnion(); return; }
       if (k === KEYS.swapColors || k === 'x') { [C.pc, C.sc] = [C.sc, C.pc]; uCol(); return; }
+      if (k === 'q') { togglePxMask(); return; }
       if (e.key === 'Delete') { T.delSel(); return; }
       if (e.key === 'Escape') { T.resetStuck(); T.clrSel(); return; }
       if (e.key === 'F11') { e.preventDefault(); togCvOnly(); return; }
@@ -3542,9 +3904,9 @@ const U = (() => {
     stroke, prevSk, apSk, replaceColor,
     apRC: _lg(apRC),                                 /* ← */
     colorRange, apCR,
-    gridCfg, applyGrid, checkerCfg, tiledCfg, textDlg, aTxt,
+    gridCfg, applyGrid, checkerCfg, tiledCfg, textDlg, aTxt: _lg(aTxt),
     tweenDlg, apTw, togTheme, togCvOnly, showKeys, apK, svKF, ldKF,
-    pxCount, about, sMo, cMo, brushCfg
+    pxCount, about, sMo, cMo, brushCfg, curves, apCurves, effectsPanel, apEffect
   };
 })();
 
