@@ -120,6 +120,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
       <div onclick="T.rotCB(90)">Rotate Brush 90° CW</div>
       <div onclick="T.rotCB(-90)">Rotate Brush 90° CCW</div>
       <div onclick="T.clearCB()">Reset Brush</div>
+      <div class="sep"></div>
+      <div onclick="U.brushCfg()">Brush Settings…</div>
     </div></div>
     <div class="mi">Layers<div class="md">
       <div onclick="Ly.add()">Add</div><div onclick="Ly.rm()">Delete</div><div onclick="Ly.dup()">Duplicate</div><div onclick="Ly.ren()">Rename</div><div class="sep"></div>
@@ -158,8 +160,32 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
       </div>
     </div>
     <div class="ps" style="flex:1;display:flex;flex-direction:column;overflow:hidden"><div class="ph">Layers</div>
-      <div class="lb"><button onclick="Ly.add()">+</button><button onclick="Ly.rm()">−</button><button onclick="Ly.dup()">⧉</button><button onclick="Ly.up()">↑</button><button onclick="Ly.dn()">↓</button><button onclick="Ly.syncAll()" title="Add layer to all frames">⟿All</button><button onclick="Ly.syncSel()" title="Add layer to selected frames">⟿Sel</button><button onclick="Ly.ren()" title="Rename">✎</button><button onclick="Ly.detachAll()" title="Detach from other frames">⊘All</button><button onclick="Ly.detachSel()" title="Detach from selected frames">⊘Sel</button></div>
-      <div style="padding:1px 8px;display:flex;align-items:center;gap:3px;font-size:9px;color:var(--txd)"><span>Op</span><input type="range" id="lop" min="0" max="100" value="100" style="flex:1;height:3px"><span id="lov">100</span></div>
+      <div class="lb">
+  <button onclick="Ly.add()">+</button>
+  <button onclick="Ly.rm()">−</button>
+  <button onclick="Ly.dup()">⧉</button>
+  <button onclick="Ly.up()">↑</button>
+  <button onclick="Ly.dn()">↓</button>
+  <button onclick="Ly.syncAll()" title="Add layer to all frames">⟿All</button>
+  <button onclick="Ly.syncSel()" title="Add layer to selected frames">⟿Sel</button>
+  <button onclick="Ly.ren()" title="Rename">✎</button>
+  <button onclick="Ly.detachAll()" title="Detach from other frames">⊘All</button>
+  <button onclick="Ly.detachSel()" title="Detach from selected frames">⊘Sel</button>
+
+  <label
+    title="Sync ON = every edit copies to this layer in ALL frames"
+    style="display:inline-flex;align-items:center;gap:4px;background:var(--acc);color:#fff;border:1px solid var(--acc);border-radius:3px;padding:1px 6px;font-size:9px;font-weight:700;cursor:pointer"
+  >
+    <input
+      type="checkbox"
+      id="lsync"
+      onchange="_layerSync=this.checked"
+      style="accent-color:#fff;width:12px;height:12px"
+    >
+    Sync
+  </label>
+</div>
+      <div style="padding:1px 8px;display:flex;align-items:center;gap:3px;font-size:9px;color:var(--txd)"><span>Op</span><input type="range" id="lop" min="0" max="100" value="100" style="flex:1;height:3px"><span id="lov">100</span><label style="margin-left:4px;color:var(--acc);font-weight:600;cursor:pointer" title="Sync ON = every edit copies to this layer in ALL frames"><input type="checkbox" id="lsync" onchange="_layerSync=this.checked" style="accent-color:var(--acc);width:11px;height:11px">Sync</label></div>
       <div id="ll"></div></div>
     <div class="ps"><div class="ph">Palette</div>
             <div class="pbtn"><button onclick="U.palPNG()">Add PNG</button><button onclick="U.palReset()">Reset 256</button><button onclick="U.palClear()">Clear</button><button onclick="U.palSort()">Sort</button><button onclick="U.palExport()">Export PNG</button><button onclick="U.palSzDn()" title="Smaller swatches">−</button><button onclick="U.palSzUp()" title="Larger swatches">+</button></div>
@@ -176,6 +202,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
     <button onclick="An.togOnion()" id="bo">◎</button>
     <button onclick="An.selAllF()">☐</button>
     <button onclick="U.tweenDlg()" style="font-size:8px;width:auto;padding:0 4px">Tw</button>
+    <button onclick="An.moveBlockTo()" style="font-size:8px;width:auto;padding:0 4px" title="Move selected frames to position">⇥</button>
     <span id="fi">1/1</span>
     <div id="fc"><span>ms</span><input type="number" id="fdi" value="100" min="1" max="65535"></div>
   </div><div id="fs"></div></div>
@@ -257,6 +284,7 @@ const BlobURLs = (() => {
 /* ===== LAYER LOCK GUARD ===== */
 let _lockMsgTimer = 0;
 let _dirty = false;
+let _layerSync = false;
 
 function _showLockMsg() {
   const ci = document.getElementById('ci');
@@ -305,6 +333,11 @@ const C = (() => {
   }
 
   function init(w, h, b) {
+    /* Memory guard: warn if canvas would exceed ~100MB per layer */
+    const maxPixels = 25000000; /* ~25 megapixels */
+    if (w * h > maxPixels) {
+      if (!confirm(`Canvas ${w}×${h} (${Math.round(w*h/1e6)}MP) is very large and may be slow. Continue?`)) return;
+    }
     W = w; H = h; bg = b;
     mc.width = W; mc.height = H;
     mkCk();
@@ -334,6 +367,11 @@ const C = (() => {
       sx: panX + (aW - dW) / 2 + cx2 * zm,
       sy: panY + (aH - dH) / 2 + cy2 * zm
     };
+  }
+
+  let _renderRAF = 0;
+  function scheduleRender() {
+    if (!_renderRAF) _renderRAF = requestAnimationFrame(() => { _renderRAF = 0; render(); });
   }
 
   function render() {
@@ -533,6 +571,21 @@ const C = (() => {
     }
     ox.restore();
 
+    /* Shift-line preview */
+    if (T._shiftPreview) {
+      const sp = T._shiftPreview;
+      ox.save();
+      ox.strokeStyle = 'rgba(68,136,255,0.6)';
+      ox.lineWidth = 1;
+      ox.setLineDash([4, 3]);
+      ox.beginPath();
+      ox.moveTo(ix(sp.x0 + 0.5), iy(sp.y0 + 0.5));
+      ox.lineTo(ix(sp.x1 + 0.5), iy(sp.y1 + 0.5));
+      ox.stroke();
+      ox.setLineDash([]);
+      ox.restore();
+    }
+
     /* Info bar */
     document.getElementById('ci').textContent =
       `${Math.round(zm * 100)}% | ${W}×${H}${tiledMode !== 'off' ? ' [Tiled:' + tiledMode + ']' : ''}`;
@@ -713,7 +766,7 @@ const C = (() => {
     set ckSize(v) { ckSize = v; mkCk(); render(); },
     get tiledMode() { return tiledMode; },
     set tiledMode(v) { tiledMode = v; render(); },
-    init, render, s2c, c2s, sZ, zoomAt, zIn, zOut, zFit, z1x,
+    init, render, scheduleRender, s2c, c2s, sZ, zoomAt, zIn, zOut, zFit, z1x,
     togGrid, flipC, rotC, resize, compClean, compFrame, mkCk
   };
 })();
@@ -727,8 +780,9 @@ const T = (() => {
   let sel = null, clip = null, floating = null, tfMode = false, tfPixel = false, tfAction = 'auto';
   let drag = false, ds = null, lp = null, mo = null, tc = null, tx = null;
   let customBrush = null, selFrames = new Set();
-  let spaceDown = false, ctrlPick = null, lastBP = null;
-  let ppPrev = null, ppPend = null;
+  let spaceDown = false, ctrlPick = null, lastBP = null, moveAll = false;
+  let ppPrev = null, ppPend = null, _shiftPrev = null;
+  let bSpacing = 0, bMinDiam = 1, bScatter = 0;
 
   function al() {
     const fr = An.frames[An.cf];
@@ -765,6 +819,11 @@ const T = (() => {
   }
 
   function dot(ctx, x, y, sz, col) {
+    if (bShape === 'custom' && bScatter > 0 && cur === 'brush') {
+      const ang = Math.random() * Math.PI * 2;
+      x += Math.cos(ang) * Math.random() * bScatter;
+      y += Math.sin(ang) * Math.random() * bScatter;
+    }
     const p = Math.floor(x), q = Math.floor(y);
 
     if (customBrush && cur === 'brush') {
@@ -780,7 +839,7 @@ const T = (() => {
       return;
     }
 
-    const useHardPixelMode = cur === 'brush' && ppx && soft === 0;
+    const useHardPixelMode = cur === 'brush' && ppx && soft === 0 && bShape !== 'custom';
     if (useHardPixelMode) { stampHardBrush(ctx, p, q, sz, col); return; }
 
     ctx.globalAlpha = bOp / 100;
@@ -954,7 +1013,7 @@ const T = (() => {
   }
 
   function applySmooth(ctx, x, y, bR) {
-    const w = C.W, h = C.H, kr = Math.max(1, Math.ceil(bR));
+    const w = C.W, h = C.H, kr = Math.min(Math.max(1, Math.ceil(bR)), 16);
     const x0 = Math.max(0, Math.floor(x) - kr);
     const y0 = Math.max(0, Math.floor(y) - kr);
     const x1 = Math.min(w, Math.ceil(x) + kr + 1);
@@ -1259,6 +1318,7 @@ const T = (() => {
     const isR = e.button === 2, isMid = e.button === 1;
     const col = isR ? C.sc : C.pc;
     drag = true; ds = { ...pos }; lp = { ...pos }; mo = null;
+    if (_shiftPrev) _shiftPrev = null;
 
     if (isMid || spaceDown) { mo = { pan: true }; return; }
 
@@ -1431,7 +1491,7 @@ const T = (() => {
       if (lockX) pos.y = ds.y;
       if (lockY) pos.x = ds.x;
     }
-
+    
     if ((mo && mo.pan) || (e.buttons & 4) || spaceDown) {
       C.px += e.movementX; C.py += e.movementY; C.render(); return;
     }
@@ -1536,6 +1596,18 @@ const T = (() => {
         const imgd = la.ctx.getImageData(0, 0, C.W, C.H);
         la.ctx.clearRect(0, 0, C.W, C.H);
         la.ctx.putImageData(imgd, dx2, dy2);
+        /* Move same layer index in all other frames if enabled */
+        if (moveAll) {
+          const idx = An.frames[An.cf].activeLayer;
+          for (let fi = 0; fi < An.frames.length; fi++) {
+            if (fi === An.cf) continue;
+            const oLy = An.frames[fi].layers[idx];
+            if (!oLy) continue;
+            const oid = oLy.ctx.getImageData(0, 0, C.W, C.H);
+            oLy.ctx.clearRect(0, 0, C.W, C.H);
+            oLy.ctx.putImageData(oid, dx2, dy2);
+          }
+        }
         mo = { type: 'movelayer', ...pos }; C.render();
       }
       lp = { ...pos }; return;
@@ -1562,8 +1634,22 @@ const T = (() => {
           }
         }
       } else {
-        plotLine(Math.floor(lp.x), Math.floor(lp.y), Math.floor(pos.x), Math.floor(pos.y),
-          (a, b) => symDraw(la.ctx, (c, xx, yy) => dot(c, xx, yy, bSz, col), a, b));
+        if (bShape === 'custom' && bSpacing > 0) {
+          const x0 = Math.floor(lp.x), y0 = Math.floor(lp.y);
+          const x1 = Math.floor(pos.x), y1 = Math.floor(pos.y);
+          const ddx = x1 - x0, ddy = y1 - y0;
+          const dist = Math.sqrt(ddx * ddx + ddy * ddy);
+          const step = Math.max(1, bSpacing);
+          const n = Math.max(1, Math.floor(dist / step));
+          for (let si = 0; si <= n; si++) {
+            const t = n > 0 ? si / n : 0;
+            symDraw(la.ctx, (c, xx, yy) => dot(c, xx, yy, bSz, col),
+              Math.round(x0 + ddx * t), Math.round(y0 + ddy * t));
+          }
+        } else {
+          plotLine(Math.floor(lp.x), Math.floor(lp.y), Math.floor(pos.x), Math.floor(pos.y),
+            (a, b) => symDraw(la.ctx, (c, xx, yy) => dot(c, xx, yy, bSz, col), a, b));
+        }
       }
       lastBP = { x: Math.floor(pos.x), y: Math.floor(pos.y) };
       lp = { ...pos }; C.render();
@@ -1605,7 +1691,9 @@ const T = (() => {
     }
     else if (cur === 'gradient' && tx) {
       tx.clearRect(0, 0, C.W, C.H);
+      const savedDither = gradDither; gradDither = false;
       drawGrad(tx, ds.x, ds.y, pos.x, pos.y, C.pc, C.sc, gradT);
+      gradDither = savedDither;
       C.render();
       document.getElementById('mc').getContext('2d').drawImage(tc, 0, 0);
     }
@@ -1653,6 +1741,17 @@ const T = (() => {
       } else sel = null;
       C.render();
     }
+    /* Layer sync: mirror canvas to all frames (synchronous, fast) */
+    if (_layerSync && la && ['brush', 'eraser', 'airbrush', 'smooth', 'bucket', 'line', 'rect', 'circle', 'gradient'].includes(cur)) {
+      const idx = An.frames[An.cf].activeLayer;
+      for (let fi = 0; fi < An.frames.length; fi++) {
+        if (fi === An.cf) continue;
+        const oLy = An.frames[fi].layers[idx];
+        if (!oLy) continue;
+        oLy.ctx.clearRect(0, 0, C.W, C.H);
+        oLy.ctx.drawImage(la.canvas, 0, 0);
+      }
+    }
     mo = null; Ly.ui();
   }
 
@@ -1679,7 +1778,7 @@ const T = (() => {
   let _marchOff = 0;
   setInterval(() => {
     _marchOff = (_marchOff + 1) % 12;
-    if (sel || floating) C.render();
+    if (sel || floating) { if (C.scheduleRender) C.scheduleRender(); else C.render(); }
   }, 130);
 
   function drawSel(ctx) {
@@ -1822,6 +1921,9 @@ const T = (() => {
   return {
     get current() { return cur; },
     get brushSize() { return bSz; }, set brushSize(v) { bSz = v; },
+    get bSpacing() { return bSpacing; }, set bSpacing(v) { bSpacing = v; },
+    get bMinDiam() { return bMinDiam; }, set bMinDiam(v) { bMinDiam = v; },
+    get bScatter() { return bScatter; }, set bScatter(v) { bScatter = v; },
     get hardness() { return soft; }, set hardness(v) { soft = v; },
     get tolerance() { return tol; }, set tolerance(v) { tol = v; },
     get brushOpacity() { return bOp; }, set brushOpacity(v) { bOp = v; },
@@ -1848,6 +1950,11 @@ const T = (() => {
     get tfAction() { return tfAction; }, set tfAction(v) { tfAction = v; },    
     get spaceDown() { return spaceDown; }, set spaceDown(v) { spaceDown = v; },
     get ctrlPick() { return ctrlPick; }, set ctrlPick(v) { ctrlPick = v; },
+    get moveAllFrames() { return moveAll; }, set moveAllFrames(v) { moveAll = v; },
+    get _shiftPreview() { return _shiftPrev; },
+    _getLastBP() { return lastBP; },
+    _setShiftPrev(x0, y0, x1, y1) { _shiftPrev = { x0, y0, x1, y1 }; },
+    _clearShiftPrev() { _shiftPrev = null; },
     onDown, onMove, onUp, drawSel, set, setLight, resetStuck,
     copySel, cutSel: _lg(cutSel), pasteSel, delSel: _lg(delSel), clrSel, selAll,
     activeLayer: al, grabBrush, flipCB, rotCB, clearCB,
@@ -2055,11 +2162,30 @@ const Ly = (() => {
       lk.textContent = ly.locked ? '\u{1F512}' : '\u{1F513}';
       lk.title = ly.locked ? 'Unlock layer' : 'Lock layer';
       if (ly.locked) lk.style.cssText = 'background:#c22;color:#fff;border-radius:2px;padding:0 2px';
-      lk.onclick = ev => { ev.stopPropagation(); ly.locked = !ly.locked; ui(); };
+      lk.onclick = ev => {
+        ev.stopPropagation();
+        ly.locked = !ly.locked;
+        /* If all frames selected, apply to same layer index in all frames */
+        if (T.selFrames.size === An.frames.length) {
+          for (const frm of An.frames) {
+            if (frm.layers[i]) frm.layers[i].locked = ly.locked;
+          }
+        }
+        ui();
+      };
       const vs = document.createElement('span');
       vs.className = 'lv';
       vs.textContent = ly.visible ? '👁' : '—';
-      vs.onclick = ev => { ev.stopPropagation(); ly.visible = !ly.visible; ui(); C.render(); };
+      vs.onclick = ev => {
+        ev.stopPropagation();
+        ly.visible = !ly.visible;
+        if (T.selFrames.size === An.frames.length) {
+          for (const frm of An.frames) {
+            if (frm.layers[i]) frm.layers[i].visible = ly.visible;
+          }
+        }
+        ui(); C.render();
+      };
       div.append(th, nm, lk, vs);
       div.onclick = () => { f.activeLayer = i; ui(); sOp(); };
       list.append(div);
@@ -2123,12 +2249,35 @@ const An = (() => {
   function next() { goTo(cf + 1); }
 
   function moveL() {
+    const sel = [...T.selFrames].sort((a, b) => a - b);
+    if (sel.length > 0) {
+      if (sel[0] <= 0) return;
+      for (const i of sel) {
+        [frames[i], frames[i - 1]] = [frames[i - 1], frames[i]];
+      }
+      T.selFrames.clear();
+      for (const i of sel) T.selFrames.add(i - 1);
+      if (T.selFrames.has(cf - 1) || sel.includes(cf)) cf = Math.max(0, cf - 1);
+      uStrip(); Ly.ui(); C.render(); return;
+    }
     if (cf <= 0) return;
     [frames[cf], frames[cf - 1]] = [frames[cf - 1], frames[cf]];
     cf--; uStrip(); Ly.ui(); C.render();
   }
 
   function moveR() {
+    const sel = [...T.selFrames].sort((a, b) => b - a);
+    if (sel.length > 0) {
+      if (sel[0] >= frames.length - 1) return;
+      for (const i of sel) {
+        [frames[i], frames[i + 1]] = [frames[i + 1], frames[i]];
+      }
+      const oldSel = [...T.selFrames];
+      T.selFrames.clear();
+      for (const i of oldSel) T.selFrames.add(i + 1);
+      if (oldSel.includes(cf)) cf = Math.min(frames.length - 1, cf + 1);
+      uStrip(); Ly.ui(); C.render(); return;
+    }
     if (cf >= frames.length - 1) return;
     [frames[cf], frames[cf + 1]] = [frames[cf + 1], frames[cf]];
     cf++; uStrip(); Ly.ui(); C.render();
@@ -2249,12 +2398,34 @@ const An = (() => {
     uStrip(); Ly.ui(); C.render();
   }
 
+  function moveBlockTo() {
+    const sel = [...T.selFrames].sort((a, b) => a - b);
+    if (sel.length === 0) { alert('Select frames first (Shift+click)'); return; }
+    const dest = prompt('Move selected frames before which position? (1-' + (frames.length + 1) + ')', '1');
+    if (!dest) return;
+    let di = Math.max(0, Math.min(frames.length, parseInt(dest) - 1));
+    if (isNaN(di)) return;
+    Hi.push();
+    /* Extract selected frames */
+    const extracted = [];
+    for (let i = sel.length - 1; i >= 0; i--) {
+      extracted.unshift(frames.splice(sel[i], 1)[0]);
+      if (di > sel[i]) di--;
+    }
+    /* Insert at destination */
+    frames.splice(di, 0, ...extracted);
+    cf = di;
+    T.selFrames.clear();
+    for (let i = 0; i < extracted.length; i++) T.selFrames.add(di + i);
+    uStrip(); Ly.ui(); C.render();
+  }
+
   return {
     get frames() { return frames; }, set frames(v) { frames = v; },
     get cf() { return cf; }, set cf(v) { cf = v; },
     get onion() { return onion; }, get playing() { return playing; },
     mkF, init, addF, dupF, rmF, goTo, prev, next, moveL, moveR,
-    selAllF, pp, stop, togOnion, uStrip, syncDur, tween
+    selAllF, pp, stop, togOnion, uStrip, syncDur, tween, moveBlockTo
   };
 })();
 
@@ -2268,7 +2439,7 @@ const Hi = (() => {
     const pixelBytes = C.W * C.H * 4;
     const snapshotBytes = totalLayers * pixelBytes;
     /* Target ~200 MB of undo memory max */
-    const MAX_BYTES = 200 * 1024 * 1024;
+    const MAX_BYTES = 150 * 1024 * 1024;
     return Math.max(5, Math.min(50, Math.floor(MAX_BYTES / Math.max(1, snapshotBytes))));
   }
 
@@ -2380,15 +2551,16 @@ const U = (() => {
     const t = T.current;
 
     if (['brush', 'eraser', 'airbrush'].includes(t)) {
-      let h = `<label>Sz<input type="range" min="1" max="64" value="${T.brushSize}" oninput="T.brushSize=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.brushSize}</span></label><label>Op<input type="range" min="1" max="100" value="${T.brushOpacity}" oninput="T.brushOpacity=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.brushOpacity}</span></label><label>Soft<input type="range" min="0" max="10" value="${T.hardness}" oninput="T.hardness=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.hardness}</span></label>`;
-      if (t === 'brush') h += `<label>PP<input type="checkbox" ${T.pixelPerfect ? 'checked' : ''} onchange="T.pixelPerfect=this.checked"></label><label><select onchange="T.brushShape=this.value"><option value="circle"${T.brushShape === 'circle' ? ' selected' : ''}>●</option><option value="square"${T.brushShape === 'square' ? ' selected' : ''}>■</option></select></label>`;
+      let h = `<label>Sz<input type="range" min="1" max="64" value="${T.brushSize}" oninput="T.brushSize=+this.value;this.nextElementSibling.value=this.value"><input type="number" min="1" max="64" value="${T.brushSize}" style="width:28px;background:var(--bg1);border:1px solid var(--bd);color:var(--tx);font-size:9px;text-align:center;border-radius:2px;padding:0" oninput="T.brushSize=+this.value;this.previousElementSibling.value=this.value"></label><label>Op<input type="range" min="1" max="100" value="${T.brushOpacity}" oninput="T.brushOpacity=+this.value;this.nextElementSibling.value=this.value"><input type="number" min="1" max="100" value="${T.brushOpacity}" style="width:28px;background:var(--bg1);border:1px solid var(--bd);color:var(--tx);font-size:9px;text-align:center;border-radius:2px;padding:0" oninput="T.brushOpacity=+this.value;this.previousElementSibling.value=this.value"></label><label>Soft<input type="range" min="0" max="10" value="${T.hardness}" oninput="T.hardness=+this.value;this.nextElementSibling.value=this.value"><input type="number" min="0" max="10" value="${T.hardness}" style="width:24px;background:var(--bg1);border:1px solid var(--bd);color:var(--tx);font-size:9px;text-align:center;border-radius:2px;padding:0" oninput="T.hardness=+this.value;this.previousElementSibling.value=this.value"></label>`;
+      if (t === 'brush') h += `<label>PP<input type="checkbox" ${T.pixelPerfect ? 'checked' : ''} onchange="T.pixelPerfect=this.checked"></label><label><select onchange="T.brushShape=this.value"><option value="circle"${T.brushShape === 'circle' ? ' selected' : ''}>●</option><option value="square"${T.brushShape === 'square' ? ' selected' : ''}>■</option><option value="custom"${T.brushShape === 'custom' ? ' selected' : ''}>C</option></select></label>`;
       h += `<label>SymH<input type="checkbox" ${T.symH ? 'checked' : ''} onchange="T.symH=this.checked;U.uTopt()"></label><label>SymV<input type="checkbox" ${T.symV ? 'checked' : ''} onchange="T.symV=this.checked;U.uTopt()"></label><label>45°<input type="checkbox" ${T.sym45 ? 'checked' : ''} onchange="T.sym45=this.checked"></label><label>-45°<input type="checkbox" ${T.sym45n ? 'checked' : ''} onchange="T.sym45n=this.checked"></label>`;
       if (T.symH || T.symV) h += `<label><button class="bsc" style="padding:0 4px;font-size:8px" onclick="C.symHP=0.5;C.symVP=0.5;C.render();U.uTopt()">↻</button></label><label style="color:var(--txd)">Alt+drag=move axis | </label>`;
       h += `<label>LkH<input type="checkbox" ${T.lockX ? 'checked' : ''} onchange="T.lockX=this.checked;U.uTopt()"></label><label>LkV<input type="checkbox" ${T.lockY ? 'checked' : ''} onchange="T.lockY=this.checked;U.uTopt()"></label>`;
       if (T.customBrush) h += `<label style="color:var(--acc)">⬦Cust</label>`;
+      h += `<label><button class="bsc" style="padding:0 4px;font-size:10px" onclick="T.brushSize=1;T.hardness=0;T.brushOpacity=100;T.clearCB();U.uTopt()" title="Reset brush">•</button></label>`;
       b.innerHTML = h;
     }
-    else if (t === 'smooth') b.innerHTML = `<label>R<input type="range" min="1" max="32" value="${T.brushSize}" oninput="T.brushSize=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.brushSize}</span></label><label>Int<input type="range" min="1" max="10" value="${T.smoothInt}" oninput="T.smoothInt=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.smoothInt}</span></label>`;
+    else if (t === 'smooth') b.innerHTML = `<label>R<input type="range" min="1" max="16" value="${Math.min(T.brushSize,16)}" oninput="T.brushSize=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.brushSize}</span></label><label>Int<input type="range" min="1" max="10" value="${T.smoothInt}" oninput="T.smoothInt=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.smoothInt}</span></label>`;
     else if (t === 'gradient') {
       let gh = `<label>Type<select onchange="T.gradType=this.value"><option value="linear"${T.gradType === 'linear' ? ' selected' : ''}>Linear</option><option value="radial"${T.gradType === 'radial' ? ' selected' : ''}>Radial</option></select></label>`;
       gh += `<label>Op<input type="range" min="1" max="100" value="${T.brushOpacity}" oninput="T.brushOpacity=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.brushOpacity}</span></label>`;
@@ -2415,6 +2587,7 @@ const U = (() => {
       h += `<label style="color:var(--txd)">Shift=move · Enter=apply</label>`;
       b.innerHTML = h;
     }
+    else if (t === 'move') b.innerHTML = `<label>All Frames<input type="checkbox" ${T.moveAllFrames ? 'checked' : ''} onchange="T.moveAllFrames=this.checked" title="Move this layer in all frames that contain it"></label>`;
     else if (t === 'magnifier') b.innerHTML = `<label style="color:var(--txd)">Click=in · Right=out</label>`;
     else if (t === 'brush-select') b.innerHTML = `<label style="color:var(--txd)">Drag to capture brush</label>`;
   }
@@ -2570,8 +2743,6 @@ const U = (() => {
   function palSzDn() { palSwatchSize = Math.max(6, palSwatchSize - 2); lPal(userPalette); }
 
   /* Modal helpers */
-
-  /* Modal helpers */
   function sMo(h) {
     document.getElementById('mr').innerHTML =
       `<div class="mov" onclick="if(event.target===this)U.cMo()"><div class="mo">${h}</div></div>`;
@@ -2698,17 +2869,37 @@ const U = (() => {
   }
 
   function textDlg(x, y) {
-    sMo(`<h3>Text</h3><label>Text<input type="text" id="tt" value="Hello" style="width:120px"></label><label>Size<input type="number" id="tsz" value="16" min="4" max="256"></label><label>Font<select id="tf"><option>monospace</option><option>serif</option><option>sans-serif</option><option>cursive</option></select></label><label>Bold<input type="checkbox" id="tbb"></label><div class="mb"><button class="bsc" onclick="U.cMo()">Cancel</button><button class="bp" onclick="U.aTxt(${x},${y})">Add</button></div>`);
+    sMo(`<h3>Text</h3><label>Text<input type="text" id="tt" value="Hello" style="width:120px"></label><label>Size<input type="number" id="tsz" value="16" min="4" max="256"></label><label>Font<select id="tf"><option>monospace</option><option>serif</option><option>sans-serif</option><option>cursive</option></select></label><label>Bold<input type="checkbox" id="tbb"></label><label>Outline<input type="checkbox" id="tol"></label><label>Outline W<input type="number" id="tolw" value="2" min="1" max="16" style="width:40px"></label><div class="mb"><button class="bsc" onclick="U.cMo()">Cancel</button><button class="bp" onclick="U.aTxt(${x},${y})">Add</button></div>`);
   }
 
   function aTxt(x, y) {
     const la = T.activeLayer(); if (!la) return;
     Hi.push();
-    la.ctx.fillStyle = C.pc;
-    la.ctx.font = `${document.getElementById('tbb').checked ? 'bold ' : ''}${+document.getElementById('tsz').value}px ${document.getElementById('tf').value}`;
+    const txt = document.getElementById('tt').value;
+    const font = `${document.getElementById('tbb').checked ? 'bold ' : ''}${+document.getElementById('tsz').value}px ${document.getElementById('tf').value}`;
+    la.ctx.font = font;
     la.ctx.textBaseline = 'top';
-    la.ctx.fillText(document.getElementById('tt').value, x, y);
+    if (document.getElementById('tol').checked) {
+      la.ctx.strokeStyle = C.sc;
+      la.ctx.lineWidth = +document.getElementById('tolw').value;
+      la.ctx.lineJoin = 'round';
+      la.ctx.strokeText(txt, x, y);
+    }
+    la.ctx.fillStyle = C.pc;
+    la.ctx.fillText(txt, x, y);
     cMo(); C.render(); Ly.ui();
+  }
+
+  function brushCfg() {
+    sMo(`<h3>Custom Brush Settings (C)</h3>
+<p style="font-size:9px;color:var(--acc);margin-bottom:8px;font-weight:600">Active only when shape = <b>C</b>. Select ● or ■ for normal brush.</p>
+<label>Spacing (px)<input type="range" id="bs_sp" min="0" max="50" value="${T.bSpacing}" style="width:100px" oninput="this.nextElementSibling.textContent=this.value"><span>${T.bSpacing}</span></label>
+<p style="font-size:8px;color:var(--txd)">0=continuous. Higher=dots further apart.</p>
+<label>Min Diameter<input type="range" id="bs_md" min="1" max="32" value="${T.bMinDiam}" style="width:100px" oninput="this.nextElementSibling.textContent=this.value"><span>${T.bMinDiam}</span></label>
+<p style="font-size:8px;color:var(--txd)">Minimum brush size for tapering effects.</p>
+<label>Scatter<input type="range" id="bs_sc" min="0" max="20" value="${T.bScatter}" style="width:100px" oninput="this.nextElementSibling.textContent=this.value"><span>${T.bScatter}</span></label>
+<p style="font-size:8px;color:var(--txd)">Random offset for spray/texture effects.</p>
+<div class="mb"><button class="bsc" onclick="U.cMo()">Cancel</button><button class="bp" onclick="T.bSpacing=+document.getElementById('bs_sp').value;T.bMinDiam=+document.getElementById('bs_md').value;T.bScatter=+document.getElementById('bs_sc').value;U.cMo()">OK</button></div>`);
   }
 
   function togTheme() {
@@ -3006,8 +3197,8 @@ const U = (() => {
 
   function prevBI() {
     const la = T.activeLayer(); if (!la || !_adjBk) return;
-    const r = Math.min(+document.getElementById('bi_r').value, Math.floor((Math.min(C.W, C.H) - 1) / 2));
-    if (r < 1) return;
+    const r = Math.max(1, Math.min(+document.getElementById('bi_r').value, Math.floor((Math.min(C.W, C.H) - 1) / 2)));
+    if (r < 1 || C.W < 3 || C.H < 3) return;
     const w = C.W, h = C.H;
     const src = _adjBk.data;
     const t1 = new Uint8ClampedArray(src.length);
@@ -3221,12 +3412,30 @@ const U = (() => {
       e.preventDefault();
       C.zoomAt(e.deltaY < 0 ? 1.5 : 1 / 1.5, e.clientX, e.clientY);
     }, { passive: false });
+    /* Shift-line preview — runs independently of drag system */
+    a.addEventListener('mousemove', e => {
+      if (e.buttons !== 0) return;
+      const ct = T.current;
+      if (!e.shiftKey || !['brush', 'eraser'].includes(ct)) {
+        if (T._shiftPreview) { T._clearShiftPrev(); C.render(); }
+        return;
+      }
+      const bp = T._getLastBP();
+      if (!bp) return;
+      const pos = C.s2c(e.clientX, e.clientY);
+      T._setShiftPrev(bp.x, bp.y, Math.floor(pos.x), Math.floor(pos.y));
+      C.render();
+    });
 
     document.getElementById('lop').addEventListener('input', function () {
       const f = An.frames[An.cf]; if (!f) return;
       const ly = f.layers[f.activeLayer]; if (!ly) return;
       ly.opacity = +this.value;
       document.getElementById('lov').textContent = this.value;
+      if (_layerSync) {
+        const idx = f.activeLayer;
+        for (const frm of An.frames) { if (frm.layers[idx]) frm.layers[idx].opacity = ly.opacity; }
+      }
       C.render();
     });
 
@@ -3312,6 +3521,7 @@ const U = (() => {
         T.setLight(T.ctrlPick); T.ctrlPick = null;
       }
       if (e.key === ' ') T.spaceDown = false;
+      if (e.key === 'Shift' && T._shiftPreview) { T._clearShiftPrev(); C.render(); }
     });
 
     window.addEventListener('blur', () => T.resetStuck());
@@ -3334,7 +3544,7 @@ const U = (() => {
     colorRange, apCR,
     gridCfg, applyGrid, checkerCfg, tiledCfg, textDlg, aTxt,
     tweenDlg, apTw, togTheme, togCvOnly, showKeys, apK, svKF, ldKF,
-    pxCount, about, sMo, cMo
+    pxCount, about, sMo, cMo, brushCfg
   };
 })();
 
