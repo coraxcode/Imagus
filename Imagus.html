@@ -862,6 +862,86 @@ const T = (() => {
 
   function isSel(t) { return SEL_TOOLS.includes(t); }
 
+    function hasSel() {
+    return !!(sel && sel.type === 'rect' && sel.w > 0 && sel.h > 0);
+  }
+
+  function selBounds() {
+    if (!hasSel()) return null;
+
+    const x = Math.max(0, Math.round(sel.x));
+    const y = Math.max(0, Math.round(sel.y));
+    const w = Math.max(0, Math.min(C.W - x, Math.round(sel.w)));
+    const h = Math.max(0, Math.min(C.H - y, Math.round(sel.h)));
+
+    return (w > 0 && h > 0) ? { x, y, w, h } : null;
+  }
+
+  function selHit(x, y) {
+    const b = selBounds();
+    if (!b) return true;
+
+    x = Math.floor(x);
+    y = Math.floor(y);
+
+    if (x < b.x || y < b.y || x >= b.x + b.w || y >= b.y + b.h) return false;
+
+    if (!sel.mask) return true;
+
+    return !!sel.mask[(y - b.y) * b.w + (x - b.x)];
+  }
+
+  function runSelectedEdit(layer, editFn) {
+    const b = selBounds();
+
+    if (!b) {
+      editFn(layer.ctx);
+      return;
+    }
+
+    /* Fast path: simple rectangular selection */
+    if (!sel.mask) {
+      layer.ctx.save();
+      layer.ctx.beginPath();
+      layer.ctx.rect(b.x, b.y, b.w, b.h);
+      layer.ctx.clip();
+
+      try {
+        editFn(layer.ctx);
+      } finally {
+        layer.ctx.restore();
+      }
+      return;
+    }
+
+    /* Safe path: masked selection (magic wand etc.) */
+    const before = layer.ctx.getImageData(b.x, b.y, b.w, b.h);
+
+    const temp = document.createElement('canvas');
+    temp.width = C.W;
+    temp.height = C.H;
+
+    const tx = temp.getContext('2d', { willReadFrequently: true });
+    tx.imageSmoothingEnabled = false;
+    tx.drawImage(layer.canvas, 0, 0);
+
+    editFn(tx);
+
+    const after = tx.getImageData(b.x, b.y, b.w, b.h);
+
+    for (let i = 0; i < sel.mask.length; i++) {
+      if (sel.mask[i]) continue;
+
+      const p = i * 4;
+      after.data[p]     = before.data[p];
+      after.data[p + 1] = before.data[p + 1];
+      after.data[p + 2] = before.data[p + 2];
+      after.data[p + 3] = before.data[p + 3];
+    }
+
+    layer.ctx.putImageData(after, b.x, b.y);
+  }
+
   function h2r(h) {
     if (!h || h.length < 7) return { r: 0, g: 0, b: 0 };
     return {
@@ -886,79 +966,113 @@ const T = (() => {
     }
   }
 
-  function dot(ctx, x, y, sz, col) {
+    function dot(ctx, x, y, sz, col) {
     if (bShape === 'custom' && bScatter > 0 && cur === 'brush') {
       const ang = Math.random() * Math.PI * 2;
       x += Math.cos(ang) * Math.random() * bScatter;
       y += Math.sin(ang) * Math.random() * bScatter;
     }
+
     const p = Math.floor(x), q = Math.floor(y);
 
     if (customBrush && cur === 'brush') {
+      const bx = p - Math.floor(customBrush.width / 2);
+      const by = q - Math.floor(customBrush.height / 2);
+
+      if (!hasSel()) {
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        ctx.globalAlpha = bOp / 100;
+        ctx.drawImage(customBrush, bx, by);
+        ctx.restore();
+        return;
+      }
+
+      const temp = document.createElement('canvas');
+      temp.width = customBrush.width;
+      temp.height = customBrush.height;
+
+      const tctx = temp.getContext('2d', { willReadFrequently: true });
+      tctx.imageSmoothingEnabled = false;
+      tctx.drawImage(customBrush, 0, 0);
+
+      const id = tctx.getImageData(0, 0, temp.width, temp.height);
+      const d = id.data;
+
+      for (let yy = 0; yy < temp.height; yy++) {
+        for (let xx = 0; xx < temp.width; xx++) {
+          if (!selHit(bx + xx, by + yy)) {
+            d[(yy * temp.width + xx) * 4 + 3] = 0;
+          }
+        }
+      }
+
+      tctx.putImageData(id, 0, 0);
+
       ctx.save();
       ctx.imageSmoothingEnabled = false;
       ctx.globalAlpha = bOp / 100;
-      ctx.drawImage(
-        customBrush,
-        p - Math.floor(customBrush.width / 2),
-        q - Math.floor(customBrush.height / 2)
-      );
+      ctx.drawImage(temp, bx, by);
       ctx.restore();
       return;
     }
 
-    const useHardPixelMode = cur === 'brush' && ppx && soft === 0 && bShape !== 'custom';
-    if (useHardPixelMode) { stampHardBrush(ctx, p, q, sz, col); return; }
+    const size = Math.max(1, Math.round(sz));
+    const half = size / 2;
+    const baseAlpha = bOp / 100;
 
-    ctx.globalAlpha = bOp / 100;
-    if (sz <= 1 && soft === 0) {
-      ctx.fillStyle = col;
-      ctx.fillRect(p, q, 1, 1);
-      ctx.globalAlpha = 1;
-      return;
-    }
+    const left = Math.floor(p - half) - 1;
+    const top = Math.floor(q - half) - 1;
+    const right = Math.ceil(p + half) + 1;
+    const bottom = Math.ceil(q + half) + 1;
 
-    const r = Math.max(sz / 2, 0.5);
-    const cx2 = p + 0.5, cy2 = q + 0.5;
+    ctx.save();
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = col;
 
-    if (soft > 0 && sz > 1) {
-      if (bShape === 'square') {
-        const halfSz = Math.floor(sz / 2);
-        const left = p - halfSz, top2 = q - halfSz;
-        const softZone = Math.max(1, Math.round(sz * soft / 20));
-        const baseAlpha = bOp / 100;
-        for (let yy = 0; yy < sz; yy++) {
-          for (let xx = 0; xx < sz; xx++) {
-            const dx2 = left + xx, dy2 = top2 + yy;
-            if (dx2 < 0 || dy2 < 0 || dx2 >= C.W || dy2 >= C.H) continue;
-            const edgeDist = Math.min(xx, yy, sz - 1 - xx, sz - 1 - yy);
-            const a = edgeDist >= softZone ? 1 : edgeDist / softZone;
-            ctx.globalAlpha = baseAlpha * a;
-            ctx.fillStyle = col;
-            ctx.fillRect(dx2, dy2, 1, 1);
+    for (let py = top; py <= bottom; py++) {
+      for (let px = left; px <= right; px++) {
+        if (px < 0 || py < 0 || px >= C.W || py >= C.H) continue;
+        if (!selHit(px, py)) continue;
+
+        let a = 0;
+
+        if (bShape === 'square') {
+          const dx = Math.abs((px + 0.5) - (p + 0.5));
+          const dy = Math.abs((py + 0.5) - (q + 0.5));
+
+          if (dx > half || dy > half) continue;
+
+          if (soft > 0 && size > 1) {
+            const edge = Math.min(half - dx, half - dy);
+            const softZone = Math.max(0.5, half * (soft / 10));
+            a = edge >= softZone ? 1 : Math.max(0, edge / softZone);
+          } else {
+            a = 1;
+          }
+        } else {
+          const dx = (px + 0.5) - (p + 0.5);
+          const dy = (py + 0.5) - (q + 0.5);
+          const dist = Math.sqrt(dx * dx + dy * dy);
+
+          if (dist > half) continue;
+
+          if (soft > 0 && size > 1) {
+            const inner = Math.max(0, half * (1 - soft / 10));
+            a = dist <= inner ? 1 : Math.max(0, 1 - (dist - inner) / Math.max(0.0001, half - inner));
+          } else {
+            a = 1;
           }
         }
-        ctx.globalAlpha = 1;
-      } else {
-        const hf = Math.max(0.01, 1 - soft / 10);
-        const rgb = h2r(col);
-        const g = ctx.createRadialGradient(cx2, cy2, 0, cx2, cy2, r);
-        g.addColorStop(0, col);
-        g.addColorStop(Math.min(hf, 0.99), col);
-        g.addColorStop(
-          Math.min(hf + 0.001, 0.999),
-          `rgba(${rgb.r},${rgb.g},${rgb.b},${Math.max(0, 1 - soft / 15)})`
-        );
-        g.addColorStop(1, `rgba(${rgb.r},${rgb.g},${rgb.b},0)`);
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(cx2, cy2, r, 0, Math.PI * 2); ctx.fill();
+
+        if (a <= 0) continue;
+
+        ctx.globalAlpha = baseAlpha * a;
+        ctx.fillRect(px, py, 1, 1);
       }
-    } else {
-      ctx.fillStyle = col;
-      if (bShape === 'square') ctx.fillRect(p - Math.floor(r), q - Math.floor(r), sz, sz);
-      else { ctx.beginPath(); ctx.arc(cx2, cy2, r, 0, Math.PI * 2); ctx.fill(); }
     }
-    ctx.globalAlpha = 1;
+
+    ctx.restore();
   }
 
   function stampHardBrush(ctx, x, y, sz, col) {
@@ -1009,7 +1123,7 @@ const T = (() => {
       const a = Math.random() * Math.PI * 2, d = Math.random() * r;
       const px2 = Math.floor(x + Math.cos(a) * d);
       const py2 = Math.floor(y + Math.sin(a) * d);
-      if (px2 >= 0 && py2 >= 0 && px2 < C.W && py2 < C.H)
+      if (px2 >= 0 && py2 >= 0 && px2 < C.W && py2 < C.H && selHit(px2, py2))
         ctx.fillRect(px2, py2, 1, 1);
     }
     ctx.globalAlpha = 1;
@@ -1095,10 +1209,12 @@ const T = (() => {
     const k = [1, 4, 7, 4, 1, 4, 16, 26, 16, 4, 7, 26, 41, 26, 7, 4, 16, 26, 16, 4, 1, 4, 7, 4, 1];
     for (let py2 = 0; py2 < sh; py2++) {
       for (let px2 = 0; px2 < sw; px2++) {
-        const wx = x0 + px2 - x, wy = y0 + py2 - y;
+        const gx = x0 + px2, gy = y0 + py2;
+        const wx = gx - x, wy = gy - y;
         const dist = Math.sqrt(wx * wx + wy * wy);
         const i = (py2 * sw + px2) * 4;
-        if (dist > kr) {
+
+        if (!selHit(gx, gy) || dist > kr) {
           o[i] = d[i]; o[i + 1] = d[i + 1]; o[i + 2] = d[i + 2]; o[i + 3] = d[i + 3];
           continue;
         }
@@ -1543,7 +1659,12 @@ const T = (() => {
       C.render();
     }
     else if (cur === 'smooth') { Hi.push(); applySmooth(la.ctx, pos.x, pos.y, bSz); C.render(); }
-    else if (cur === 'bucket') { Hi.push(); floodFill(la.ctx, pos.x, pos.y, col); C.render(); Ly.ui(); }
+    else if (cur === 'bucket') {
+      Hi.push();
+      T.runSelectedEdit(la, ctx => floodFill(ctx, pos.x, pos.y, col));
+      C.render();
+      Ly.ui();
+    }
     else if (cur === 'picker') {
       const cx2 = C.compClean();
       const px2 = Math.floor(pos.x), py2 = Math.floor(pos.y);
@@ -1795,14 +1916,14 @@ const T = (() => {
       let p = pos;
       if (e.shiftKey && (cur === 'rect' || cur === 'circle')) p = constrain(ds, pos);
       tx.clearRect(0, 0, C.W, C.H);
-      drawShape(tx, ds, p, col);
+      T.runSelectedEdit({ ctx: tx, canvas: tc }, ctx => drawShape(ctx, ds, p, col));
       C.render();
       document.getElementById('mc').getContext('2d').drawImage(tc, 0, 0);
     }
     else if (cur === 'gradient' && tx) {
       tx.clearRect(0, 0, C.W, C.H);
       const savedDither = gradDither; gradDither = false;
-      drawGrad(tx, ds.x, ds.y, pos.x, pos.y, C.pc, C.sc, gradT);
+      T.runSelectedEdit({ ctx: tx, canvas: tc }, ctx => drawGrad(ctx, ds.x, ds.y, pos.x, pos.y, C.pc, C.sc, gradT));
       gradDither = savedDither;
       C.render();
       document.getElementById('mc').getContext('2d').drawImage(tc, 0, 0);
@@ -1830,11 +1951,11 @@ const T = (() => {
       Hi.push();
       let p = pos;
       if (e.shiftKey && (cur === 'rect' || cur === 'circle')) p = constrain(ds, pos);
-      drawShape(la.ctx, ds, p, col);
+      T.runSelectedEdit(la, ctx => drawShape(ctx, ds, p, col));
       tc = null; tx = null; C.render();
     }
     if (cur === 'gradient' && la && !la.locked && tx) {
-      drawGrad(la.ctx, ds.x, ds.y, pos.x, pos.y, C.pc, C.sc, gradT);
+      T.runSelectedEdit(la, ctx => drawGrad(ctx, ds.x, ds.y, pos.x, pos.y, C.pc, C.sc, gradT));
       tc = null; tx = null; C.render();
     }
     if (cur === 'brush-select' && sel && sel.type === 'rect') grabBrush();
@@ -2069,7 +2190,11 @@ const T = (() => {
     onDown, onMove, onUp, drawSel, set, setLight, resetStuck,
     copySel, cutSel: _lg(cutSel), pasteSel, delSel: _lg(delSel), clrSel, selAll,
     activeLayer: al, grabBrush, flipCB, rotCB, clearCB,
-    commitFloat, toggleTf, isSel, startFreeRot
+        commitFloat, toggleTf, isSel, startFreeRot,
+    hasSelection: hasSel,
+    selectionBounds: selBounds,
+    selectionHit: selHit,
+    runSelectedEdit
   };
 })();
 
@@ -3014,16 +3139,20 @@ const U = (() => {
     Hi.push();
     const txt = document.getElementById('tt').value;
     const font = `${document.getElementById('tbb').checked ? 'bold ' : ''}${+document.getElementById('tsz').value}px ${document.getElementById('tf').value}`;
-    la.ctx.font = font;
-    la.ctx.textBaseline = 'top';
-    if (document.getElementById('tol').checked) {
-      la.ctx.strokeStyle = C.sc;
-      la.ctx.lineWidth = +document.getElementById('tolw').value;
-      la.ctx.lineJoin = 'round';
-      la.ctx.strokeText(txt, x, y);
-    }
-    la.ctx.fillStyle = C.pc;
-    la.ctx.fillText(txt, x, y);
+    T.runSelectedEdit(la, ctx => {
+      ctx.font = font;
+      ctx.textBaseline = 'top';
+
+      if (document.getElementById('tol').checked) {
+        ctx.strokeStyle = C.sc;
+        ctx.lineWidth = +document.getElementById('tolw').value;
+        ctx.lineJoin = 'round';
+        ctx.strokeText(txt, x, y);
+      }
+
+      ctx.fillStyle = C.pc;
+      ctx.fillText(txt, x, y);
+    });
     cMo(); C.render(); Ly.ui();
   }
 
@@ -3089,7 +3218,8 @@ const U = (() => {
         if (!src[i + 3]) continue;
         d[i] = lutR[lutRGB[src[i]]]; d[i+1] = lutG[lutRGB[src[i+1]]]; d[i+2] = lutB[lutRGB[src[i+2]]];
       }
-      la.ctx.putImageData(id, 0, 0); C.render();
+      _putWithSelection(la, id, _adjBk);
+      C.render();
     }
     window._cvBuildLUT = buildLUT;
     cvs.onmousedown = e => {
@@ -3233,7 +3363,8 @@ const U = (() => {
         if (!keep) { const blend=0.5; for(let ch=0;ch<3;ch++) d[i+ch]=Math.round(d[i+ch]*blend+src[i+ch]*(1-blend)); }
       }
     }
-    la.ctx.putImageData(id, 0, 0); C.render();
+    _putWithSelection(la, id, _adjBk);
+    C.render();
   }
 
   function apEffect() {
@@ -3259,7 +3390,7 @@ const U = (() => {
       if (!d[i + 3]) continue;
       d[i] = lutR[lutRGB[d[i]]]; d[i+1] = lutG[lutRGB[d[i+1]]]; d[i+2] = lutB[lutRGB[d[i+2]]];
     }
-    la.ctx.putImageData(src, 0, 0);
+    _putWithSelection(la, src, _adjBk);
     _adjBk = null; cMo(); C.render(); Ly.ui();
   }
 
@@ -3330,6 +3461,12 @@ const U = (() => {
 
   function _adjCancel() { _adjRe(); _adjBk = null; cMo(); }
 
+  function _putWithSelection(la, id, backup = null) {
+    if (!la) return;
+    if (backup) la.ctx.putImageData(backup, 0, 0);
+    T.runSelectedEdit(la, ctx => ctx.putImageData(id, 0, 0));
+  }
+
   /* Brightness/Contrast */
   function briCon() {
     if (!_adjSv()) return;
@@ -3352,7 +3489,8 @@ const U = (() => {
         d[i + ch] = Math.max(0, Math.min(255, Math.round(v)));
       }
     }
-    la.ctx.putImageData(id, 0, 0); C.render();
+    _putWithSelection(la, id, _adjBk);
+    C.render();
   }
 
   function apBC() {
@@ -3373,7 +3511,8 @@ const U = (() => {
       const g = Math.round(d[i] * .299 + d[i + 1] * .587 + d[i + 2] * .114);
       d[i] = d[i + 1] = d[i + 2] = g;
     }
-    la.ctx.putImageData(id, 0, 0); C.render(); Ly.ui();
+    _putWithSelection(la, id);
+    C.render(); Ly.ui();
   }
 
   /* Invert */
@@ -3387,7 +3526,8 @@ const U = (() => {
     const sx2 = sel2 ? Math.min(C.W, sx + Math.round(sel2.w)) : C.W;
     const sy2 = sel2 ? Math.min(C.H, sy + Math.round(sel2.h)) : C.H;
     for (let y = sy; y < sy2; y++) {
-      for (let x = sx; x < sx2; x++) {
+       for (let x = sx; x < sx2; x++) {
+        if (sel2 && sel2.mask && !T.selectionHit(x, y)) continue;
         const i = (y * C.W + x) * 4;
         if (!d[i + 3]) continue;
         d[i] = 255 - d[i]; d[i + 1] = 255 - d[i + 1]; d[i + 2] = 255 - d[i + 2];
@@ -3422,7 +3562,8 @@ const U = (() => {
       if (!src[i + 3]) { d[i] = d[i + 1] = d[i + 2] = 0; continue; }
       d[i] = lut[src[i]]; d[i + 1] = lut[src[i + 1]]; d[i + 2] = lut[src[i + 2]];
     }
-    la.ctx.putImageData(id, 0, 0); C.render();
+    _putWithSelection(la, id, _adjBk);
+    C.render();
   }
 
   function apLv() {
@@ -3485,7 +3626,8 @@ const U = (() => {
       const [r, g, b2] = _h2r(h, s, l);
       d[i] = r; d[i + 1] = g; d[i + 2] = b2;
     }
-    la.ctx.putImageData(id, 0, 0); C.render();
+    _putWithSelection(la, id, _adjBk);
+    C.render();
   }
 
   function apHS() {
@@ -3569,7 +3711,8 @@ const U = (() => {
     _boxBlur(t2, t1, w, h, r);
     const id = la.ctx.createImageData(w, h);
     id.data.set(t1);
-    la.ctx.putImageData(id, 0, 0); C.render();
+    _putWithSelection(la, id, _adjBk);
+    C.render();
   }
 
   function apBI() {
@@ -3658,7 +3801,8 @@ const U = (() => {
         }
       }
     }
-    la.ctx.putImageData(id, 0, 0); C.render();
+    _putWithSelection(la, id, _adjBk);
+    C.render();
   }
 
   function apSk() {
@@ -3693,7 +3837,8 @@ const U = (() => {
         d[i] = dr; d[i + 1] = dg; d[i + 2] = db;
       }
     }
-    la.ctx.putImageData(id, 0, 0); cMo(); C.render(); Ly.ui();
+    _putWithSelection(la, id);
+    cMo(); C.render(); Ly.ui();
   }
 
   /* Color Range */
