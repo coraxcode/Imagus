@@ -2854,26 +2854,45 @@ const Hi = (() => {
   }
 
   function restore(s) {
-    /* Restore canvas dimensions first — critical for trim/crop undo */
-    const rw = s.w || C.W, rh = s.h || C.H;
-    if (rw !== C.W || rh !== C.H) {
-      C.init(rw, rh, C.bg);
-    }
-    An.frames = [];
-    for (const fs of s.frames) {
-      const fr = { layers: [], activeLayer: fs.al, duration: fs.dur || 100 };
-      for (const ls of fs.layers) {
-        const ly = Ly.mk(ls.n);
-        ly.canvas.width = rw; ly.canvas.height = rh;
-        ly.opacity = ls.o; ly.visible = ls.v; ly.locked = ls.k;
-        ly.ctx.drawImage(ls.c, 0, 0);
-        fr.layers.push(ly);
+      const prevZoom = C.zm;
+      const prevPanX = C.px;
+      const prevPanY = C.py;
+
+      /* Restore canvas dimensions first — critical for trim/crop undo */
+      const rw = s.w || C.W, rh = s.h || C.H;
+      const sizeChanged = rw !== C.W || rh !== C.H;
+
+      if (sizeChanged) {
+        C.init(rw, rh, C.bg);
       }
-      An.frames.push(fr);
+
+      An.frames = [];
+      for (const fs of s.frames) {
+        const fr = { layers: [], activeLayer: fs.al, duration: fs.dur || 100 };
+        for (const ls of fs.layers) {
+          const ly = Ly.mk(ls.n);
+          ly.canvas.width = rw; ly.canvas.height = rh;
+          ly.opacity = ls.o; ly.visible = ls.v; ly.locked = ls.k;
+          ly.ctx.drawImage(ls.c, 0, 0);
+          fr.layers.push(ly);
+        }
+        An.frames.push(fr);
+      }
+
+      An.cf = Math.min(s.cf, An.frames.length - 1);
+
+      if (sizeChanged) {
+        C.zFit();
+      } else {
+        C.zm = prevZoom;
+        C.px = prevPanX;
+        C.py = prevPanY;
+        C.render();
+      }
+
+      Ly.ui();
+      An.uStrip();
     }
-    An.cf = Math.min(s.cf, An.frames.length - 1);
-    C.zFit(); C.render(); Ly.ui(); An.uStrip();
-  }
 
   function push() {
     _dirty = true;
