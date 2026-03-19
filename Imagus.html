@@ -846,6 +846,7 @@ const T = (() => {
   let symH = false, symV = false, sym45 = false, sym45n = false;
   let mouseH = 0, gradT = 'linear', gradDither = false, gradDitherLv = 4, gradDitherSt = 'bayer', lockX = false, lockY = false, smInt = 5;
   let sel = null, clip = null, floating = null, tfMode = false, tfPixel = false, tfAction = 'auto';
+  let floatingUndoCaptured = false;
   let drag = false, ds = null, lp = null, mo = null, tc = null, tx = null;
   let customBrush = null, selFrames = new Set();
   let jumbleInt = 35;
@@ -1535,9 +1536,16 @@ const T = (() => {
   function commitFloat() {
     if (!floating) return;
     const la = al();
-    if (!la) { floating = null; tfMode = false; sel = null; C.render(); return; }
+    if (!la) {
+      floating = null;
+      tfMode = false;
+      sel = null;
+      floatingUndoCaptured = false;
+      C.render();
+      return;
+    }
     if (la.locked) { _showLockMsg(); return; }
-    Hi.push();
+    if (!floatingUndoCaptured) Hi.push();
     const fw = floating.tw || floating.canvas.width;
     const fh = floating.th || floating.canvas.height;
     la.ctx.save();
@@ -1547,7 +1555,11 @@ const T = (() => {
     la.ctx.drawImage(floating.canvas, -fw / 2, -fh / 2, fw, fh);
     la.ctx.restore();
     la.ctx.imageSmoothingEnabled = false;
-    floating = null; tfMode = false; tfAction = 'auto'; sel = null;
+    floating = null;
+    tfMode = false;
+    tfAction = 'auto';
+    sel = null;
+    floatingUndoCaptured = false;
     C.render(); Ly.ui(); U.uTopt();
   }
 
@@ -1559,6 +1571,7 @@ const T = (() => {
     const sh = Math.min(Math.round(sel.h), C.H - sy);
     if (sw < 1 || sh < 1) return false;
     Hi.push();
+    floatingUndoCaptured = true;
     const fc = document.createElement('canvas');
     fc.width = sw; fc.height = sh;
     const fx = fc.getContext('2d');
@@ -2231,6 +2244,7 @@ const T = (() => {
     fc.width = clip.width; fc.height = clip.height;
     fc.getContext('2d').drawImage(clip, 0, 0);
     floating = { canvas: fc, x, y, tw: clip.width, th: clip.height, rot: 0 };
+    floatingUndoCaptured = false;
     tfMode = false; sel = null; C.render();
   }
 
