@@ -262,7 +262,7 @@ let palSwatchSize = 12;
 let KEYS = {
   brush: 'b', eraser: 'e', airbrush: 'a', jumble: 'j', bucket: 'g', picker: 'i',
   move: 'v', 'rect-select': 'm', 'magic-wand': 'w', text: 't',
-  line: 'l', rect: 'r', circle: 'c', pan: 'h', smooth: 's',
+  line: 'l', rect: 'r', circle: 'c', contour: 'o', pan: 'h', smooth: 's',
   gradient: 'd', magnifier: 'z',
   prevFrame: '1', nextFrame: '2', goToFrame: '3', play: '4',
   onionSkin: '5', swapColors: 'x'
@@ -858,7 +858,7 @@ const T = (() => {
   let mouseH = 0, gradT = 'linear', gradDither = false, gradDitherLv = 4, gradDitherSt = 'bayer', lockX = false, lockY = false, smInt = 5;
   let sel = null, clip = null, floating = null, tfMode = false, tfPixel = false, tfAction = 'auto';
   let floatingUndoCaptured = false;
-  let drag = false, ds = null, lp = null, mo = null, tc = null, tx = null;
+  let drag = false, ds = null, lp = null, mo = null, tc = null, tx = null, contourPts = null;
   let customBrush = null, selFrames = new Set();
   let jumbleInt = 35;
   let spaceDown = false, ctrlPick = null, lastBP = null, moveAll = false;
@@ -1842,6 +1842,13 @@ const T = (() => {
     }
     else if (cur === 'rect-select' || cur === 'brush-select') { sel = null; }
     else if (cur === 'freehand-select') { sel = { type: 'freehand', points: [{ ...pos }] }; }
+    else if (cur === 'contour') {
+      tc = document.createElement('canvas');
+      tc.width = C.W; tc.height = C.H;
+      tx = tc.getContext('2d');
+      tx.imageSmoothingEnabled = false;
+      contourPts = [{ x: Math.floor(pos.x), y: Math.floor(pos.y) }];
+    }
     else if (cur === 'magic-wand') { magicSel(la, pos.x, pos.y); }
     else if (['line', 'rect', 'circle'].includes(cur)) {
       tc = document.createElement('canvas');
@@ -2080,6 +2087,20 @@ const T = (() => {
     else if (cur === 'freehand-select' && sel && sel.type === 'freehand') {
       sel.points.push({ ...pos }); C.render();
     }
+    else if (cur === 'contour' && tx && contourPts) {
+      const nx = Math.floor(pos.x);
+      const ny = Math.floor(pos.y);
+      const last = contourPts[contourPts.length - 1];
+
+      if (!last || last.x !== nx || last.y !== ny) {
+        contourPts.push({ x: nx, y: ny });
+      }
+
+      tx.clearRect(0, 0, C.W, C.H);
+      drawContour(tx, contourPts, col, true);
+      C.render();
+      document.getElementById('mc').getContext('2d').drawImage(tc, 0, 0);
+    }
     else if (['line', 'rect', 'circle'].includes(cur) && tx) {
       let p = pos;
       if (e.shiftKey && (cur === 'rect' || cur === 'circle')) p = constrain(ds, pos);
@@ -2122,9 +2143,20 @@ const T = (() => {
       T.runSelectedEdit(la, ctx => drawShape(ctx, ds, p, col));
       tc = null; tx = null; C.render();
     }
-    if (cur === 'gradient' && la && !la.locked && tx) {
+        if (cur === 'gradient' && la && !la.locked && tx) {
       T.runSelectedEdit(la, ctx => drawGrad(ctx, ds.x, ds.y, pos.x, pos.y, C.pc, C.sc, gradT));
       tc = null; tx = null; C.render();
+    }
+    if (cur === 'contour') {
+      if (la && !la.locked && tx && contourPts && contourPts.length >= 3) {
+        Hi.push();
+        T.runSelectedEdit(la, ctx => drawContour(ctx, contourPts, col));
+      }
+      tc = null;
+      tx = null;
+      contourPts = null;
+      C.render();
+      Ly.ui();
     }
     if (cur === 'brush-select' && sel && sel.type === 'rect') grabBrush();
     if (cur === 'freehand-select' && sel && sel.type === 'freehand') {
@@ -2141,7 +2173,7 @@ const T = (() => {
       C.render();
     }
     /* Layer sync: mirror canvas to all frames (synchronous, fast) */
-    if (_layerSync && la && ['brush', 'eraser', 'airbrush', 'jumble', 'smooth', 'bucket', 'line', 'rect', 'circle', 'gradient'].includes(cur)) {
+   if (_layerSync && la && ['brush', 'eraser', 'airbrush', 'jumble', 'smooth', 'bucket', 'line', 'rect', 'circle', 'contour', 'gradient'].includes(cur)) {
       const idx = An.frames[An.cf].activeLayer;
       for (let fi = 0; fi < An.frames.length; fi++) {
         if (fi === An.cf) continue;
@@ -2153,6 +2185,35 @@ const T = (() => {
     }
     mo = null; Ly.ui();
   }
+
+    function drawContour(ctx, pts, col, preview = false) {
+        if (!pts || pts.length < 2) return;
+
+        ctx.save();
+        ctx.imageSmoothingEnabled = false;
+        ctx.fillStyle = col;
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 1;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+
+        ctx.beginPath();
+        ctx.moveTo(Math.floor(pts[0].x), Math.floor(pts[0].y));
+
+        for (let i = 1; i < pts.length; i++) {
+          ctx.lineTo(Math.floor(pts[i].x), Math.floor(pts[i].y));
+        }
+
+        if (pts.length >= 3) {
+          ctx.closePath();
+          ctx.globalAlpha = preview ? 0.25 : bOp / 100;
+          ctx.fill();
+        }
+
+        ctx.globalAlpha = preview ? 0.85 : bOp / 100;
+        ctx.stroke();
+        ctx.restore();
+      }
 
   function drawShape(ctx, f, t, col) {
     ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = bSz;
@@ -2299,7 +2360,7 @@ const T = (() => {
     if (floating) commitFloat();
     tfMode = false;
     /* Keep selection active — user may want to constrain brush/fill to selection area */
-    cur = t; tc = null; tx = null; mo = null; ppPrev = null; ppPend = null;
+    cur = t; tc = null; tx = null; contourPts = null; mo = null; ppPrev = null; ppPend = null;
     document.querySelectorAll('.tb').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
     U.uTopt(); C.render();
   }
@@ -2314,7 +2375,7 @@ const T = (() => {
       cur = ctrlPick; ctrlPick = null;
       document.querySelectorAll('.tb').forEach(b => b.classList.toggle('on', b.dataset.tool === cur));
     }
-    spaceDown = false; drag = false; mo = null; tc = null; tx = null;
+    spaceDown = false; drag = false; mo = null; tc = null; tx = null; contourPts = null;
     ppPrev = null; ppPend = null;
   }
 
@@ -2957,6 +3018,7 @@ const U = (() => {
     { id: 'line', l: 'Line', k: 'L', i: '<line x1="4" y1="18" x2="18" y2="4"/>' },
     { id: 'rect', l: 'Rect', k: 'R', i: '<rect x="4" y="5" width="14" height="12" rx="1"/>' },
     { id: 'circle', l: 'Ellipse', k: 'C', i: '<ellipse cx="11" cy="11" rx="8" ry="6"/>' },
+    { id: 'contour', l: 'Contour', k: 'O', i: '<path d="M4 14C4 7 8 4 13 5c4 1 6 4 5 8-1 3-4 5-8 5-4 0-6-2-6-4z"/>' },
     { s: 1 },
     { id: 'bucket', l: 'Fill', k: 'G', i: '<path d="M6 18l-2-2 9-9 4 4-9 9z"/><path d="M15 7l2-2"/>' },
     { id: 'gradient', l: 'Gradient', k: 'D', i: '<rect x="4" y="4" width="14" height="14" rx="1"/><line x1="4" y1="18" x2="18" y2="4" stroke-dasharray="2"/>' },
@@ -3044,6 +3106,7 @@ const U = (() => {
     }
     else if (['rect', 'circle'].includes(t)) b.innerHTML = `<label>W<input type="range" min="1" max="32" value="${T.brushSize}" oninput="T.brushSize=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.brushSize}</span></label><label>Mode<select onchange="T.shapeMode=this.value"><option value="outline"${T.shapeMode === 'outline' ? ' selected' : ''}>Outline</option><option value="filled"${T.shapeMode === 'filled' ? ' selected' : ''}>Filled</option></select></label>`;
     else if (t === 'line') b.innerHTML = `<label>W<input type="range" min="1" max="32" value="${T.brushSize}" oninput="T.brushSize=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.brushSize}</span></label>`;
+    else if (t === 'contour') b.innerHTML = `<label>Op<input type="range" min="1" max="100" value="${T.brushOpacity}" oninput="T.brushOpacity=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.brushOpacity}</span></label><label style="color:var(--txd)">Drag and release = close + fill</label>`;
     else if (t === 'bucket') b.innerHTML = `<label>Tol<input type="range" min="0" max="128" value="${T.tolerance}" oninput="T.tolerance=+this.value;this.nextElementSibling.textContent=this.value"><span>${T.tolerance}</span></label>`;
     else if (['rect-select', 'freehand-select', 'magic-wand'].includes(t)) {
       let h = '';
@@ -3628,7 +3691,7 @@ const U = (() => {
   }
 
   function showKeys() {
-    sMo(`<h3>Shortcuts</h3><div style="font-size:9px;line-height:1.7;max-height:140px;overflow-y:auto;margin-bottom:8px">B Brush · E Eraser · A Airbrush · J Jumble · D Gradient · G Fill<br>I Picker · V Move · H Pan · Z Zoom · S Smooth · T Text<br>M Select · W Wand · L Line · R Rect · C Ellipse<br>1 Prev · 2 Next · 3 GoTo · 4 Play · 5 Onion · 0 All Frames<br>SymH & SymV (Alt+Drag – Move axis)<br>Arrow Keys = Shift 1px · X Swap<br>Ctrl+Z/Y · Ctrl+C/V/X · Ctrl+A · Ctrl+S<br>Space=Pan · Alt=Picker · Enter=Apply · Esc=Deselect · F11<br>Ctrl+Click=Select Layer · Ctrl+Right-Drag=Move Layer</div><label>Edit (JSON):</label><textarea id="keyjson">${JSON.stringify(KEYS, null, 2)}</textarea><div class="mb"><button class="bsc" onclick="U.ldKF()">Load</button><button class="bsc" onclick="U.svKF()">Save</button><button class="bp" onclick="U.apK()">Apply</button></div>`);
+    sMo(`<h3>Shortcuts</h3><div style="font-size:9px;line-height:1.7;max-height:140px;overflow-y:auto;margin-bottom:8px">B Brush · E Eraser · A Airbrush · J Jumble · D Gradient · G Fill<br>I Picker · V Move · H Pan · Z Zoom · S Smooth · T Text<br>M Select · O Contour · W Wand · L Line · R Rect · C Ellipse<br>1 Prev · 2 Next · 3 GoTo · 4 Play · 5 Onion · 0 All Frames<br>SymH & SymV (Alt+Drag – Move axis)<br>Arrow Keys = Shift 1px · X Swap<br>Ctrl+Z/Y · Ctrl+C/V/X · Ctrl+A · Ctrl+S<br>Space=Pan · Alt=Picker · Enter=Apply · Esc=Deselect · F11<br>Ctrl+Click=Select Layer · Ctrl+Right-Drag=Move Layer</div><label>Edit (JSON):</label><textarea id="keyjson">${JSON.stringify(KEYS, null, 2)}</textarea><div class="mb"><button class="bsc" onclick="U.ldKF()">Load</button><button class="bsc" onclick="U.svKF()">Save</button><button class="bp" onclick="U.apK()">Apply</button></div>`);
   }
 
   function apK() {
