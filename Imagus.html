@@ -230,11 +230,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
     </div></div>
     <div class="mi">Layers<div class="md">
       <div onclick="Ly.add()">Add</div>
-<div onclick="Ly.addMask()">Add Mask</div>
-<div onclick="Ly.rm()">Delete</div>
-<div onclick="Ly.dup()">Duplicate</div>
-<div onclick="Ly.ren()">Rename</div>
-<div class="sep"></div>
+      <div onclick="Ly.addMask()">Add Mask</div>
+      <div onclick="Ly.rm()">Delete</div>
+      <div onclick="Ly.dup()">Duplicate</div>
+      <div onclick="Ly.ren()">Rename</div>
+      <div onclick="Ly.openBlendDialog()">Blending Mode...</div>
+      <div class="sep"></div>
       <div onclick="Ly.up()">Up</div><div onclick="Ly.dn()">Down</div><div class="sep"></div>
       <div onclick="Ly.mergeDown()">Merge Down</div><div onclick="Ly.flatten()">Flatten</div><div class="sep"></div>
       <div onclick="Ly.syncAll()">Add Layer to All Frames</div>
@@ -303,6 +304,11 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
   <input type="range" id="lop" min="0" max="100" value="100" style="flex:1;height:3px">
   <span id="lov">100</span>
 </div>
+
+<div style="padding:1px 8px 6px;display:flex;align-items:center;gap:4px;font-size:9px;color:var(--txd)">
+  <span>Blend</span>
+  <select id="lblend" style="flex:1;min-width:0;background:var(--bg2);border:1px solid var(--bd);color:var(--tx);padding:1px 2px;border-radius:2px;font-family:inherit;font-size:9px"></select>
+</div>
       <div id="ll"></div></div>
     <div class="ps"><div class="ph">Palette</div>
             <div class="pbtn"><button onclick="U.palPNG()">Add PNG</button><button onclick="U.palReset()">Reset 256</button><button onclick="U.palClear()">Clear</button><button onclick="U.palSort()">Sort</button><button onclick="U.palExport()">Export PNG</button><button onclick="U.palSzDn()" title="Smaller swatches">−</button><button onclick="U.palSzUp()" title="Larger swatches">+</button></div>
@@ -352,6 +358,91 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
 /* ===== CONSTANTS ===== */
 const SEL_TOOLS = ['rect-select', 'freehand-select', 'magic-wand', 'brush-select'];
 const FLOOD_FILL_MAX_ITERATIONS = 4000000;
+
+const LAYER_BLEND_MODES = Object.freeze([
+  'normal',
+  'dissolve',
+  'behind',
+  'clear',
+  'darken',
+  'multiply',
+  'color-burn',
+  'linear-burn',
+  'darker-color',
+  'lighten',
+  'screen',
+  'color-dodge',
+  'linear-dodge',
+  'lighter-color',
+  'overlay',
+  'soft-light',
+  'hard-light',
+  'vivid-light',
+  'linear-light',
+  'pin-light',
+  'hard-mix',
+  'difference',
+  'exclusion',
+  'subtract',
+  'divide',
+  'hue',
+  'saturation',
+  'color',
+  'luminosity'
+]);
+
+const LAYER_BLEND_LABELS = Object.freeze({
+  normal: 'Normal',
+  dissolve: 'Dissolve',
+  behind: 'Behind',
+  clear: 'Clear',
+  darken: 'Darken',
+  multiply: 'Multiply',
+  'color-burn': 'Color Burn',
+  'linear-burn': 'Linear Burn',
+  'darker-color': 'Darker Color',
+  lighten: 'Lighten',
+  screen: 'Screen',
+  'color-dodge': 'Color Dodge',
+  'linear-dodge': 'Linear Dodge (Add)',
+  'lighter-color': 'Lighter Color',
+  overlay: 'Overlay',
+  'soft-light': 'Soft Light',
+  'hard-light': 'Hard Light',
+  'vivid-light': 'Vivid Light',
+  'linear-light': 'Linear Light',
+  'pin-light': 'Pin Light',
+  'hard-mix': 'Hard Mix',
+  difference: 'Difference',
+  exclusion: 'Exclusion',
+  subtract: 'Subtract',
+  divide: 'Divide',
+  hue: 'Hue',
+  saturation: 'Saturation',
+  color: 'Color',
+  luminosity: 'Luminosity'
+});
+
+const LAYER_BLEND_NATIVE_OPS = Object.freeze({
+  normal: 'source-over',
+  behind: 'destination-over',
+  clear: 'destination-out',
+  darken: 'darken',
+  multiply: 'multiply',
+  'color-burn': 'color-burn',
+  lighten: 'lighten',
+  screen: 'screen',
+  'color-dodge': 'color-dodge',
+  overlay: 'overlay',
+  'soft-light': 'soft-light',
+  'hard-light': 'hard-light',
+  difference: 'difference',
+  exclusion: 'exclusion',
+  hue: 'hue',
+  saturation: 'saturation',
+  color: 'color',
+  luminosity: 'luminosity'
+});
 
 const PAL256 = (() => {
   const c = [];
@@ -2810,6 +2901,7 @@ const Ly = (() => {
       copy.opacity = layer.opacity;
       copy.visible = layer.visible;
       copy.locked = layer.locked;
+      copy.blendMode = _sanitizeBlendMode(layer.blendMode);
       copy.mask = cloneMask(layer.mask);
       return copy;
     }
@@ -2870,33 +2962,518 @@ const Ly = (() => {
       C.render();
     }
 
-    function drawTo(ctx, layer) {
-      if (!layer.visible) return;
+const _nativeBlendSupport = new Map();
+const _blendProbeCtx = document.createElement('canvas').getContext('2d');
+const _blendReadCanvas = document.createElement('canvas');
+const _blendReadCtx = _blendReadCanvas.getContext('2d', { willReadFrequently: true });
+_blendReadCtx.imageSmoothingEnabled = false;
 
-      const prevAlpha = ctx.globalAlpha;
-      ctx.globalAlpha = prevAlpha * (layer.opacity / 100);
+function _fitBlendRead() {
+  if (_blendReadCanvas.width !== C.W) _blendReadCanvas.width = C.W;
+  if (_blendReadCanvas.height !== C.H) _blendReadCanvas.height = C.H;
+  _blendReadCtx.imageSmoothingEnabled = false;
+}
 
-      if (!layer.mask || !layer.mask.enabled) {
-        ctx.drawImage(layer.canvas, 0, 0);
-        ctx.globalAlpha = prevAlpha;
-        return;
-      }
+function _sanitizeBlendMode(mode) {
+  return LAYER_BLEND_MODES.includes(mode) ? mode : 'normal';
+}
 
-      _fitMaskTmp();
-      _maskTmpCtx.clearRect(0, 0, C.W, C.H);
-      _maskTmpCtx.globalAlpha = 1;
+function _supportsNativeBlend(mode) {
+  mode = _sanitizeBlendMode(mode);
 
-      _maskTmpCtx.globalCompositeOperation = 'source-over';
-      _maskTmpCtx.drawImage(layer.canvas, 0, 0);
+  if (_nativeBlendSupport.has(mode)) {
+    return _nativeBlendSupport.get(mode);
+  }
 
-      _maskTmpCtx.globalCompositeOperation = 'destination-in';
-      _maskTmpCtx.drawImage(layer.mask.canvas, 0, 0);
+  const op = LAYER_BLEND_NATIVE_OPS[mode];
+  if (!op || !_blendProbeCtx) {
+    _nativeBlendSupport.set(mode, false);
+    return false;
+  }
 
-      _maskTmpCtx.globalCompositeOperation = 'source-over';
-      ctx.drawImage(_maskTmpCanvas, 0, 0);
+  _blendProbeCtx.globalCompositeOperation = 'source-over';
+  _blendProbeCtx.globalCompositeOperation = op;
+  const ok = _blendProbeCtx.globalCompositeOperation === op;
 
-      ctx.globalAlpha = prevAlpha;
+  _nativeBlendSupport.set(mode, ok);
+  return ok;
+}
+
+function _blendOptionsHTML(selectedMode = 'normal') {
+  const safe = _sanitizeBlendMode(selectedMode);
+  return LAYER_BLEND_MODES.map(mode => {
+    const selected = mode === safe ? ' selected' : '';
+    return `<option value="${mode}"${selected}>${LAYER_BLEND_LABELS[mode]}</option>`;
+  }).join('');
+}
+
+function _ensureBlendSelectBuilt() {
+  const sel = document.getElementById('lblend');
+  if (!sel || sel.dataset.ready === '1') return;
+
+  sel.innerHTML = _blendOptionsHTML('normal');
+  sel.dataset.ready = '1';
+
+  sel.addEventListener('change', function () {
+    setBlendMode(this.value);
+  });
+}
+
+function setBlendMode(mode) {
+  const f = fr();
+  if (!f) return;
+
+  const ly = f.layers[f.activeLayer];
+  if (!ly) return;
+
+  const safe = _sanitizeBlendMode(mode);
+  if (ly.blendMode === safe) {
+    sOp();
+    return;
+  }
+
+  Hi.push();
+  ly.blendMode = safe;
+
+  if (_layerSync) {
+    const idx = f.activeLayer;
+    for (const frm of An.frames) {
+      if (frm.layers[idx]) frm.layers[idx].blendMode = safe;
     }
+  }
+
+  sOp();
+  C.render();
+  An.uStrip();
+}
+
+function openBlendDialog() {
+  const f = fr();
+  if (!f) return;
+
+  const ly = f.layers[f.activeLayer];
+  if (!ly) return;
+
+  U.sMo(`
+    <h3>Blending Mode</h3>
+    <label>
+      Mode
+      <select id="blend_mode_picker">${_blendOptionsHTML(ly.blendMode)}</select>
+    </label>
+    <p style="font-size:9px;color:var(--txd);margin-top:8px">
+      This affects live rendering, Merge Down, Flatten, thumbnails, and export.
+    </p>
+    <div class="mb">
+      <button class="bsc" onclick="U.cMo()">Cancel</button>
+      <button class="bp" id="blend_apply_btn">Apply</button>
+    </div>
+  `);
+
+  document.getElementById('blend_apply_btn').onclick = () => {
+    const v = document.getElementById('blend_mode_picker').value;
+    setBlendMode(v);
+    U.cMo();
+  };
+}
+
+function _getEffectiveLayerCanvas(layer) {
+  if (!layer.mask || !layer.mask.enabled) return layer.canvas;
+
+  _fitMaskTmp();
+  _maskTmpCtx.clearRect(0, 0, C.W, C.H);
+  _maskTmpCtx.globalAlpha = 1;
+  _maskTmpCtx.globalCompositeOperation = 'source-over';
+  _maskTmpCtx.drawImage(layer.canvas, 0, 0);
+  _maskTmpCtx.globalCompositeOperation = 'destination-in';
+  _maskTmpCtx.drawImage(layer.mask.canvas, 0, 0);
+  _maskTmpCtx.globalCompositeOperation = 'source-over';
+
+  return _maskTmpCanvas;
+}
+
+function _getCanvasReadContext(canvas) {
+  if (canvas === _maskTmpCanvas) return _maskTmpCtx;
+  return canvas.getContext('2d', { willReadFrequently: true });
+}
+
+function _clamp255(v) {
+  return v < 0 ? 0 : v > 255 ? 255 : Math.round(v);
+}
+
+function _hash8(x, y) {
+  let n = (((x + 1) * 73856093) ^ ((y + 1) * 19349663)) >>> 0;
+  n ^= n >>> 13;
+  n = (n * 1274126177) >>> 0;
+  return n & 255;
+}
+
+function _rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+
+  let h = 0;
+  let s = 0;
+
+  if (max !== min) {
+    const d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+
+    switch (max) {
+      case r: h = ((g - b) / d) + (g < b ? 6 : 0); break;
+      case g: h = ((b - r) / d) + 2; break;
+      default: h = ((r - g) / d) + 4; break;
+    }
+
+    h /= 6;
+  }
+
+  return [h, s, l];
+}
+
+function _hueToRgb(p, q, t) {
+  if (t < 0) t += 1;
+  if (t > 1) t -= 1;
+  if (t < 1 / 6) return p + (q - p) * 6 * t;
+  if (t < 1 / 2) return q;
+  if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+  return p;
+}
+
+function _hslToRgb(h, s, l) {
+  let r, g, b;
+
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const q = l < 0.5 ? l * (1 + s) : (l + s - l * s);
+    const p = 2 * l - q;
+    r = _hueToRgb(p, q, h + 1 / 3);
+    g = _hueToRgb(p, q, h);
+    b = _hueToRgb(p, q, h - 1 / 3);
+  }
+
+  return [_clamp255(r * 255), _clamp255(g * 255), _clamp255(b * 255)];
+}
+
+function _multiplyCh(b, s) {
+  return _clamp255((b * s) / 255);
+}
+
+function _screenCh(b, s) {
+  return _clamp255(255 - ((255 - b) * (255 - s)) / 255);
+}
+
+function _overlayCh(b, s) {
+  b /= 255;
+  s /= 255;
+  return _clamp255((b <= 0.5 ? (2 * b * s) : (1 - 2 * (1 - b) * (1 - s))) * 255);
+}
+
+function _hardLightCh(b, s) {
+  return _overlayCh(s, b);
+}
+
+function _softLightCh(b, s) {
+  b /= 255;
+  s /= 255;
+
+  let out;
+  if (s <= 0.5) {
+    out = b - (1 - 2 * s) * b * (1 - b);
+  } else {
+    const d = b <= 0.25
+      ? (((16 * b - 12) * b + 4) * b)
+      : Math.sqrt(b);
+    out = b + (2 * s - 1) * (d - b);
+  }
+
+  return _clamp255(out * 255);
+}
+
+function _colorBurnCh(b, s) {
+  if (s <= 0) return 0;
+  return _clamp255(255 - ((255 - b) * 255) / s);
+}
+
+function _colorDodgeCh(b, s) {
+  if (s >= 255) return 255;
+  return _clamp255((b * 255) / (255 - s));
+}
+
+function _vividLightCh(b, s) {
+  return s < 128
+    ? _colorBurnCh(b, Math.min(255, s * 2))
+    : _colorDodgeCh(b, Math.min(255, (s - 128) * 2));
+}
+
+function _linearLightCh(b, s) {
+  return _clamp255(b + 2 * s - 255);
+}
+
+function _pinLightCh(b, s) {
+  return s < 128
+    ? Math.min(b, s * 2)
+    : Math.max(b, (s - 128) * 2);
+}
+
+function _blendRGB(mode, br, bg, bb, sr, sg, sb) {
+  switch (mode) {
+    case 'normal':
+    case 'dissolve':
+    case 'behind':
+    case 'clear':
+      return [sr, sg, sb];
+
+    case 'darken':
+      return [Math.min(br, sr), Math.min(bg, sg), Math.min(bb, sb)];
+
+    case 'multiply':
+      return [
+        _multiplyCh(br, sr),
+        _multiplyCh(bg, sg),
+        _multiplyCh(bb, sb)
+      ];
+
+    case 'color-burn':
+      return [
+        _colorBurnCh(br, sr),
+        _colorBurnCh(bg, sg),
+        _colorBurnCh(bb, sb)
+      ];
+
+    case 'linear-burn':
+      return [
+        _clamp255(br + sr - 255),
+        _clamp255(bg + sg - 255),
+        _clamp255(bb + sb - 255)
+      ];
+
+    case 'darker-color':
+      return (br + bg + bb) <= (sr + sg + sb)
+        ? [br, bg, bb]
+        : [sr, sg, sb];
+
+    case 'lighten':
+      return [Math.max(br, sr), Math.max(bg, sg), Math.max(bb, sb)];
+
+    case 'screen':
+      return [
+        _screenCh(br, sr),
+        _screenCh(bg, sg),
+        _screenCh(bb, sb)
+      ];
+
+    case 'color-dodge':
+      return [
+        _colorDodgeCh(br, sr),
+        _colorDodgeCh(bg, sg),
+        _colorDodgeCh(bb, sb)
+      ];
+
+    case 'linear-dodge':
+      return [
+        _clamp255(br + sr),
+        _clamp255(bg + sg),
+        _clamp255(bb + sb)
+      ];
+
+    case 'lighter-color':
+      return (br + bg + bb) >= (sr + sg + sb)
+        ? [br, bg, bb]
+        : [sr, sg, sb];
+
+    case 'overlay':
+      return [
+        _overlayCh(br, sr),
+        _overlayCh(bg, sg),
+        _overlayCh(bb, sb)
+      ];
+
+    case 'soft-light':
+      return [
+        _softLightCh(br, sr),
+        _softLightCh(bg, sg),
+        _softLightCh(bb, sb)
+      ];
+
+    case 'hard-light':
+      return [
+        _hardLightCh(br, sr),
+        _hardLightCh(bg, sg),
+        _hardLightCh(bb, sb)
+      ];
+
+    case 'vivid-light':
+      return [
+        _vividLightCh(br, sr),
+        _vividLightCh(bg, sg),
+        _vividLightCh(bb, sb)
+      ];
+
+    case 'linear-light':
+      return [
+        _linearLightCh(br, sr),
+        _linearLightCh(bg, sg),
+        _linearLightCh(bb, sb)
+      ];
+
+    case 'pin-light':
+      return [
+        _pinLightCh(br, sr),
+        _pinLightCh(bg, sg),
+        _pinLightCh(bb, sb)
+      ];
+
+    case 'hard-mix':
+      return [
+        (br + sr >= 255) ? 255 : 0,
+        (bg + sg >= 255) ? 255 : 0,
+        (bb + sb >= 255) ? 255 : 0
+      ];
+
+    case 'difference':
+      return [
+        Math.abs(br - sr),
+        Math.abs(bg - sg),
+        Math.abs(bb - sb)
+      ];
+
+    case 'exclusion':
+      return [
+        _clamp255(br + sr - (2 * br * sr) / 255),
+        _clamp255(bg + sg - (2 * bg * sg) / 255),
+        _clamp255(bb + sb - (2 * bb * sb) / 255)
+      ];
+
+    case 'subtract':
+      return [
+        Math.max(0, br - sr),
+        Math.max(0, bg - sg),
+        Math.max(0, bb - sb)
+      ];
+
+    case 'divide':
+      return [
+        sr <= 0 ? 255 : _clamp255((br / sr) * 255),
+        sg <= 0 ? 255 : _clamp255((bg / sg) * 255),
+        sb <= 0 ? 255 : _clamp255((bb / sb) * 255)
+      ];
+
+    case 'hue': {
+      const [sh] = _rgbToHsl(sr, sg, sb);
+      const [, bs, bl] = _rgbToHsl(br, bg, bb);
+      return _hslToRgb(sh, bs, bl);
+    }
+
+    case 'saturation': {
+      const [, ss] = _rgbToHsl(sr, sg, sb);
+      const [bh, , bl] = _rgbToHsl(br, bg, bb);
+      return _hslToRgb(bh, ss, bl);
+    }
+
+    case 'color': {
+      const [sh, ss] = _rgbToHsl(sr, sg, sb);
+      const [, , bl] = _rgbToHsl(br, bg, bb);
+      return _hslToRgb(sh, ss, bl);
+    }
+
+    case 'luminosity': {
+      const [, , sl] = _rgbToHsl(sr, sg, sb);
+      const [bh, bs] = _rgbToHsl(br, bg, bb);
+      return _hslToRgb(bh, bs, sl);
+    }
+
+    default:
+      return [sr, sg, sb];
+  }
+}
+
+function _softwareBlendInto(ctx, sourceCanvas, alphaScale, mode) {
+  const srcCtx = _getCanvasReadContext(sourceCanvas);
+  if (!srcCtx) return;
+
+  const w = C.W;
+  const h = C.H;
+
+  const dst = ctx.getImageData(0, 0, w, h);
+  const src = srcCtx.getImageData(0, 0, w, h);
+
+  const d = dst.data;
+  const s = src.data;
+
+  for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+    const br = d[i];
+    const bg = d[i + 1];
+    const bb = d[i + 2];
+    const ba = d[i + 3] / 255;
+
+    const sr = s[i];
+    const sg = s[i + 1];
+    const sb = s[i + 2];
+
+    let sa = (s[i + 3] / 255) * alphaScale;
+    if (sa <= 0) continue;
+
+    if (mode === 'dissolve') {
+      const x = p % w;
+      const y = (p / w) | 0;
+      if ((_hash8(x, y) / 255) > sa) continue;
+      sa = 1;
+    }
+
+    const rgb = _blendRGB(mode, br, bg, bb, sr, sg, sb);
+    const ao = sa + ba * (1 - sa);
+
+    if (ao <= 0) {
+      d[i] = 0;
+      d[i + 1] = 0;
+      d[i + 2] = 0;
+      d[i + 3] = 0;
+      continue;
+    }
+
+    d[i] = _clamp255(
+      (((1 - sa) * ba * br) + ((1 - ba) * sa * sr) + (ba * sa * rgb[0])) / ao
+    );
+    d[i + 1] = _clamp255(
+      (((1 - sa) * ba * bg) + ((1 - ba) * sa * sg) + (ba * sa * rgb[1])) / ao
+    );
+    d[i + 2] = _clamp255(
+      (((1 - sa) * ba * bb) + ((1 - ba) * sa * sb) + (ba * sa * rgb[2])) / ao
+    );
+    d[i + 3] = _clamp255(ao * 255);
+  }
+
+  ctx.putImageData(dst, 0, 0);
+}
+
+function drawTo(ctx, layer) {
+  if (!layer || !layer.visible) return;
+
+  const prevAlpha = ctx.globalAlpha;
+  const prevComp = ctx.globalCompositeOperation;
+  const blendMode = _sanitizeBlendMode(layer.blendMode);
+  const layerAlpha = prevAlpha * (layer.opacity / 100);
+  const sourceCanvas = _getEffectiveLayerCanvas(layer);
+
+  const nativeOp = LAYER_BLEND_NATIVE_OPS[blendMode];
+  if (nativeOp && _supportsNativeBlend(blendMode)) {
+    ctx.globalAlpha = layerAlpha;
+    ctx.globalCompositeOperation = nativeOp;
+    ctx.drawImage(sourceCanvas, 0, 0);
+    ctx.globalCompositeOperation = prevComp;
+    ctx.globalAlpha = prevAlpha;
+    return;
+  }
+
+  _softwareBlendInto(ctx, sourceCanvas, layerAlpha, blendMode);
+
+  ctx.globalCompositeOperation = prevComp;
+  ctx.globalAlpha = prevAlpha;
+}
 
     function _plotMaskLine(x0, y0, x1, y1, cb) {
       x0 = Math.floor(x0); y0 = Math.floor(y0);
@@ -3039,8 +3616,7 @@ const Ly = (() => {
         visible: true,
         opacity: 100,
         locked: false,
-
-        /* NEW */
+        blendMode: 'normal',
         mask: null
       };
     }
@@ -3338,7 +3914,7 @@ const Ly = (() => {
 
         const nm = document.createElement('span');
         nm.className = 'ln';
-        nm.textContent = ly.name;
+        nm.title = `${ly.name} — ${LAYER_BLEND_LABELS[_sanitizeBlendMode(ly.blendMode)]}`;
         nm.ondblclick = () => {
           const n = prompt('Name:', ly.name);
           if (n) { ly.name = n; ui(); }
@@ -3392,29 +3968,38 @@ const Ly = (() => {
     sOp(); An.uStrip();
   }
 
-  function sOp() {
-    const f = fr(); if (!f) return;
-    const ly = f.layers[f.activeLayer];
-    if (!ly) return;
-    document.getElementById('lop').value = ly.opacity;
-    document.getElementById('lov').textContent = ly.opacity;
-  }
+    function sOp() {
+      const f = fr(); if (!f) return;
+      const ly = f.layers[f.activeLayer];
+      if (!ly) return;
 
-   return {
-  mk,
-  clone,
-  ensureMask,
-  cloneMask,
-  isMaskEditing,
-  addMask,
-  cycleMask,
-  drawTo,
-  paintMaskDot,
-  paintMaskLine,
-  applyMask,
-  syncMaskToAllFrames,
-  add, rm, dup, up, dn, mergeDown, flatten, syncAll, syncSel, rmAll, detachAll, detachSel, ren, ui, sOp
-};
+      document.getElementById('lop').value = ly.opacity;
+      document.getElementById('lov').textContent = ly.opacity;
+
+      _ensureBlendSelectBuilt();
+      const blendSel = document.getElementById('lblend');
+      if (blendSel) {
+        blendSel.value = _sanitizeBlendMode(ly.blendMode);
+      }
+    }
+
+    return {
+      mk,
+      clone,
+      ensureMask,
+      cloneMask,
+      isMaskEditing,
+      addMask,
+      cycleMask,
+      drawTo,
+      paintMaskDot,
+      paintMaskLine,
+      applyMask,
+      syncMaskToAllFrames,
+      setBlendMode,
+      openBlendDialog,
+      add, rm, dup, up, dn, mergeDown, flatten, syncAll, syncSel, rmAll, detachAll, detachSel, ren, ui, sOp
+    };
 })();
 
 /* ===== ANIMATION ===== */
@@ -3690,6 +4275,7 @@ const Hi = (() => {
           o: ly.opacity,
           v: ly.visible,
           k: ly.locked,
+          b: ly.blendMode,
           c,
           m
         });
@@ -3721,6 +4307,7 @@ const Hi = (() => {
             ly.opacity = ls.o;
             ly.visible = ls.v;
             ly.locked = ls.k;
+            ly.blendMode = LAYER_BLEND_MODES.includes(ls.b) ? ls.b : 'normal';
             ly.ctx.drawImage(ls.c, 0, 0);
 
             if (ls.m) {
@@ -5729,6 +6316,7 @@ cx.globalAlpha = 1;
               o: ly.opacity,
               v: ly.visible,
               k: ly.locked,
+              b: ly.blendMode,
               d: ly.canvas.toDataURL('image/png'),
               m: ly.mask ? {
                 e: ly.mask.enabled,
@@ -6035,6 +6623,7 @@ cx.globalAlpha = 1;
                 ly.opacity = typeof ls.o === 'number' ? ls.o : 100;
                 ly.visible = ls.v !== false;
                 ly.locked = !!ls.k;
+                ly.blendMode = LAYER_BLEND_MODES.includes(ls.b) ? ls.b : 'normal';
 
                 if (ls.d) {
                   const im = new Image();
