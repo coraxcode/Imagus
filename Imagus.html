@@ -86,6 +86,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
 .lm.off{
   opacity:.55;
 }
+
+.lm.move.on{
+  color:var(--acc);
+  border-color:var(--acc);
+  background:var(--accg);
+}
+
 .lv{cursor:pointer;opacity:.5;font-size:11px;flex-shrink:0}.lv:hover{opacity:1}
 .lb{display:flex;gap:2px;padding:2px var(--sp3);flex-wrap:wrap}.lb button{background:var(--bg2);border:1px solid var(--bd);color:var(--tx);padding:1px 4px;border-radius:2px;cursor:pointer;font-size:9px;font-family:inherit}.lb button:hover{background:var(--bg3)}
 #pg{display:flex;flex-wrap:wrap;gap:1px;max-height:75px;overflow-y:auto;padding:2px var(--sp3)}.pw{width:12px;height:12px;border-radius:1px;cursor:pointer;border:1px solid rgba(0,0,0,.2)}.pw:hover{transform:scale(1.4);z-index:1}
@@ -3038,6 +3045,39 @@ const Ly = (() => {
       };
     }
 
+    function getMoveSel(frame = fr()) {
+      if (!frame) return null;
+      if (!frame._moveSel) frame._moveSel = new Set();
+      return frame._moveSel;
+    }
+
+    function cleanupMoveSel(frame = fr()) {
+      if (!frame) return;
+      const sel = getMoveSel(frame);
+      for (const layer of [...sel]) {
+        if (!frame.layers.includes(layer)) sel.delete(layer);
+      }
+    }
+
+    function hasMoveSel(frame = fr()) {
+      if (!frame) return false;
+      cleanupMoveSel(frame);
+      return getMoveSel(frame).size > 0;
+    }
+
+    function toggleMoveSel(layer) {
+      const f = fr();
+      if (!f || !layer) return;
+
+      cleanupMoveSel(f);
+      const sel = getMoveSel(f);
+
+      if (sel.has(layer)) sel.delete(layer);
+      else sel.add(layer);
+
+      ui();
+    }
+
   function fr() { return An.frames[An.cf]; }
 
   function add() {
@@ -3065,20 +3105,76 @@ const Ly = (() => {
   }
 
   function up() {
-    const f = fr(); if (!f) return;
+  const f = fr(); if (!f) return;
+
+  cleanupMoveSel(f);
+
+  /* Old behavior: no multi-selection = move only active layer */
+  if (!hasMoveSel(f)) {
     const i = f.activeLayer;
     if (i >= f.layers.length - 1) return;
     [f.layers[i], f.layers[i + 1]] = [f.layers[i + 1], f.layers[i]];
-    f.activeLayer++; ui(); C.render();
+    f.activeLayer++;
+    ui(); C.render();
+    return;
   }
 
+  const sel = getMoveSel(f);
+  const activeRef = f.layers[f.activeLayer];
+  let moved = false;
+
+  for (let i = f.layers.length - 2; i >= 0; i--) {
+    const cur = f.layers[i];
+    const above = f.layers[i + 1];
+
+    if (sel.has(cur) && !sel.has(above)) {
+      [f.layers[i], f.layers[i + 1]] = [f.layers[i + 1], f.layers[i]];
+      moved = true;
+    }
+  }
+
+  if (!moved) return;
+
+  f.activeLayer = Math.max(0, f.layers.indexOf(activeRef));
+  ui();
+  C.render();
+}
+
   function dn() {
-    const f = fr(); if (!f) return;
+  const f = fr(); if (!f) return;
+
+  cleanupMoveSel(f);
+
+  /* Old behavior: no multi-selection = move only active layer */
+  if (!hasMoveSel(f)) {
     const i = f.activeLayer;
     if (i <= 0) return;
     [f.layers[i], f.layers[i - 1]] = [f.layers[i - 1], f.layers[i]];
-    f.activeLayer--; ui(); C.render();
+    f.activeLayer--;
+    ui(); C.render();
+    return;
   }
+
+  const sel = getMoveSel(f);
+  const activeRef = f.layers[f.activeLayer];
+  let moved = false;
+
+  for (let i = 1; i < f.layers.length; i++) {
+    const cur = f.layers[i];
+    const below = f.layers[i - 1];
+
+    if (sel.has(cur) && !sel.has(below)) {
+      [f.layers[i], f.layers[i - 1]] = [f.layers[i - 1], f.layers[i]];
+      moved = true;
+    }
+  }
+
+  if (!moved) return;
+
+  f.activeLayer = Math.max(0, f.layers.indexOf(activeRef));
+  ui();
+  C.render();
+}
 
   function mergeDown() {
     const f = fr(); if (!f) return;
@@ -3197,6 +3293,9 @@ const Ly = (() => {
     const f = fr(); if (!f) return;
     const list = document.getElementById('ll');
     list.innerHTML = '';
+    cleanupMoveSel(f);
+    const moveSel = getMoveSel(f);
+
     for (let i = f.layers.length - 1; i >= 0; i--) {
       const ly = f.layers[i];
       const div = document.createElement('div');
@@ -3244,9 +3343,22 @@ const Ly = (() => {
           const n = prompt('Name:', ly.name);
           if (n) { ly.name = n; ui(); }
         };
-      const lk = document.createElement('span');
-      lk.className = 'lv';
-      lk.textContent = ly.locked ? '\u{1F512}' : '\u{1F513}';
+
+        const mv = document.createElement('button');
+        mv.type = 'button';
+        mv.className = 'lm move' + (moveSel.has(ly) ? ' on' : '');
+        mv.textContent = '↕';
+        mv.title = moveSel.has(ly) ? 'Selected for multi-move' : 'Select for multi-move';
+        mv.onclick = ev => {
+          ev.stopPropagation();
+          f.activeLayer = i;
+          toggleMoveSel(ly);
+          sOp();
+        };
+
+        const lk = document.createElement('span');
+        lk.className = 'lv';
+        lk.textContent = ly.locked ? '\u{1F512}' : '\u{1F513}';
       lk.title = ly.locked ? 'Unlock layer' : 'Lock layer';
       if (ly.locked) lk.style.cssText = 'background:#c22;color:#fff;border-radius:2px;padding:0 2px';
       lk.onclick = ev => {
@@ -3273,7 +3385,7 @@ const Ly = (() => {
         }
         ui(); C.render();
       };
-      div.append(th, mb, nm, lk, vs);
+      div.append(th, mb, nm, mv, lk, vs);
       div.onclick = () => { f.activeLayer = i; ui(); sOp(); };
       list.append(div);
     }
