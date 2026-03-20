@@ -51,7 +51,42 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
 #ll{max-height:160px;overflow-y:auto}
 .li{display:flex;align-items:center;gap:2px;padding:2px var(--sp3);cursor:pointer;border-bottom:1px solid var(--bd);font-size:10px}.li:hover{background:var(--bg3)}.li.act{background:var(--bg4);border-left:2px solid var(--acc)}
 .lt{width:28px;height:16px;background:var(--bg0);border:1px solid var(--bd);border-radius:1px;image-rendering:pixelated;flex-shrink:0}
-.ln{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.lv{cursor:pointer;opacity:.5;font-size:11px;flex-shrink:0}.lv:hover{opacity:1}
+.ln{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lm{
+  width:18px;
+  height:18px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  margin-right:6px;
+  border:1px solid var(--bd);
+  border-radius:2px;
+  background:var(--bg2);
+  color:var(--txd);
+  cursor:pointer;
+  flex:0 0 auto;
+}
+
+.lm:hover{
+  background:var(--bg3);
+  color:var(--txb);
+}
+
+.lm.on{
+  color:var(--txb);
+  border-color:var(--bdl);
+}
+
+.lm.edit{
+  color:#ff4d4d;
+  border-color:#ff4d4d;
+  background:rgba(255,77,77,.12);
+}
+
+.lm.off{
+  opacity:.55;
+}
+.lv{cursor:pointer;opacity:.5;font-size:11px;flex-shrink:0}.lv:hover{opacity:1}
 .lb{display:flex;gap:2px;padding:2px var(--sp3);flex-wrap:wrap}.lb button{background:var(--bg2);border:1px solid var(--bd);color:var(--tx);padding:1px 4px;border-radius:2px;cursor:pointer;font-size:9px;font-family:inherit}.lb button:hover{background:var(--bg3)}
 #pg{display:flex;flex-wrap:wrap;gap:1px;max-height:75px;overflow-y:auto;padding:2px var(--sp3)}.pw{width:12px;height:12px;border-radius:1px;cursor:pointer;border:1px solid rgba(0,0,0,.2)}.pw:hover{transform:scale(1.4);z-index:1}
 .pbtn{display:flex;gap:2px;padding:2px var(--sp3);flex-wrap:wrap}.pbtn button{background:var(--bg2);border:1px solid var(--bd);color:var(--tx);padding:1px 4px;border-radius:2px;cursor:pointer;font-size:8px;font-family:inherit}.pbtn button:hover{background:var(--bg3)}
@@ -187,7 +222,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
       <div onclick="U.brushCfg()">Brush Settings…</div>
     </div></div>
     <div class="mi">Layers<div class="md">
-      <div onclick="Ly.add()">Add</div><div onclick="Ly.rm()">Delete</div><div onclick="Ly.dup()">Duplicate</div><div onclick="Ly.ren()">Rename</div><div class="sep"></div>
+      <div onclick="Ly.add()">Add</div>
+<div onclick="Ly.addMask()">Add Mask</div>
+<div onclick="Ly.rm()">Delete</div>
+<div onclick="Ly.dup()">Duplicate</div>
+<div onclick="Ly.ren()">Rename</div>
+<div class="sep"></div>
       <div onclick="Ly.up()">Up</div><div onclick="Ly.dn()">Down</div><div class="sep"></div>
       <div onclick="Ly.mergeDown()">Merge Down</div><div onclick="Ly.flatten()">Flatten</div><div class="sep"></div>
       <div onclick="Ly.syncAll()">Add Layer to All Frames</div>
@@ -234,6 +274,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
   <button onclick="Ly.ren()" title="Rename">✎</button>
   <button onclick="Ly.detachAll()" title="Detach from other frames">⊘All</button>
   <button onclick="Ly.detachSel()" title="Detach from selected frames">⊘Sel</button>
+  <button onclick="Ly.addMask()" title="Create a mask for the active layer">Add Mask</button>
+  <button onclick="Ly.applyMask()" title="Apply the mask to the active layer">Apply Mask</button>
 
   <label
     title="Sync ON = every edit copies to this layer in ALL frames"
@@ -248,7 +290,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
     Sync
   </label>
 </div>
-      <div style="padding:1px 8px;display:flex;align-items:center;gap:3px;font-size:9px;color:var(--txd)"><span>Op</span><input type="range" id="lop" min="0" max="100" value="100" style="flex:1;height:3px"><span id="lov">100</span><label style="margin-left:4px;color:var(--acc);font-weight:600;cursor:pointer" title="Sync ON = every edit copies to this layer in ALL frames"><input type="checkbox" id="lsync" onchange="_layerSync=this.checked" style="accent-color:var(--acc);width:11px;height:11px">Sync</label></div>
+
+<div style="padding:1px 8px;display:flex;align-items:center;gap:3px;font-size:9px;color:var(--txd)">
+  <span>Op</span>
+  <input type="range" id="lop" min="0" max="100" value="100" style="flex:1;height:3px">
+  <span id="lov">100</span>
+</div>
       <div id="ll"></div></div>
     <div class="ps"><div class="ph">Palette</div>
             <div class="pbtn"><button onclick="U.palPNG()">Add PNG</button><button onclick="U.palReset()">Reset 256</button><button onclick="U.palClear()">Clear</button><button onclick="U.palSort()">Sort</button><button onclick="U.palExport()">Export PNG</button><button onclick="U.palSzDn()" title="Smaller swatches">−</button><button onclick="U.palSzUp()" title="Larger swatches">+</button></div>
@@ -463,12 +510,10 @@ const C = (() => {
     if (bg === 'white') { cx.fillStyle = '#fff'; cx.fillRect(0, 0, W, H); }
     if (fr) {
       for (const ly of fr.layers) {
-        if (!ly.visible) continue;
-        cx.globalAlpha = ly.opacity / 100;
-        cx.drawImage(ly.canvas, 0, 0);
-      }
-    }
-    cx.globalAlpha = 1;
+  Ly.drawTo(cx, ly);
+}
+}
+cx.globalAlpha = 1;
     return cx;
   }
 
@@ -513,17 +558,21 @@ const C = (() => {
           if (fi === ci) continue;
           const dist = Math.abs(fi - ci);
           const alpha = Math.max(0.04, 0.3 / dist);
-          mx.globalAlpha = alpha;
-          for (const ly of frames[fi].layers)
-            if (ly.visible) mx.drawImage(ly.canvas, 0, 0);
-        }
-        mx.globalAlpha = 1;
+          mx.save();
+mx.globalAlpha = alpha;
+for (const ly of frames[fi].layers) {
+  Ly.drawTo(mx, ly);
+}
+mx.restore();
+}
       } else {
         if (ci > 0) {
-          mx.globalAlpha = 0.25;
-          for (const ly of frames[ci - 1].layers)
-            if (ly.visible) mx.drawImage(ly.canvas, 0, 0);
-          mx.globalAlpha = 1;
+          mx.save();
+        mx.globalAlpha = 0.25;
+        for (const ly of frames[ci - 1].layers) {
+          Ly.drawTo(mx, ly);
+        }
+        mx.restore();
         }
         if (ci < frames.length - 1) {
           mx.globalAlpha = 0.15;
@@ -539,8 +588,7 @@ const C = (() => {
     if (fr) {
       for (const ly of fr.layers) {
         if (!ly.visible) continue;
-        mx.globalAlpha = ly.opacity / 100;
-        mx.drawImage(ly.canvas, 0, 0);
+        Ly.drawTo(mx, ly);
       }
       mx.globalAlpha = 1;
     }
@@ -787,6 +835,21 @@ const C = (() => {
     } else {
       Hi.push();
       for (const ly of fr.layers) {
+      if (ly.mask) {
+          const mt = document.createElement('canvas');
+          mt.width = W;
+          mt.height = H;
+          const mx = mt.getContext('2d');
+
+          mx.save();
+          if (dir === 'h') { mx.translate(W, 0); mx.scale(-1, 1); }
+          else { mx.translate(0, H); mx.scale(1, -1); }
+          mx.drawImage(ly.mask.canvas, 0, 0);
+          mx.restore();
+
+          ly.mask.ctx.clearRect(0, 0, W, H);
+          ly.mask.ctx.drawImage(mt, 0, 0);
+        }
         const t2 = document.createElement('canvas');
         t2.width = W; t2.height = H;
         const tx = t2.getContext('2d');
@@ -847,6 +910,22 @@ const C = (() => {
         tx.drawImage(ly.canvas, -W / 2, -H / 2);
         ly.canvas.width = nw; ly.canvas.height = nh;
         ly.ctx.drawImage(t2, 0, 0);
+        if (ly.mask) {
+          const mt = document.createElement('canvas');
+          mt.width = nw;
+          mt.height = nh;
+          const mx = mt.getContext('2d');
+
+          mx.translate(nw / 2, nh / 2);
+          mx.rotate(deg * Math.PI / 180);
+          mx.drawImage(ly.mask.canvas, -W / 2, -H / 2);
+
+          ly.mask.canvas.width = nw;
+          ly.mask.canvas.height = nh;
+          ly.mask.ctx = ly.mask.canvas.getContext('2d', { willReadFrequently: true });
+          ly.mask.ctx.imageSmoothingEnabled = false;
+          ly.mask.ctx.drawImage(mt, 0, 0);
+        }
       }
       if (ad === 90 || ad === 270) { W = nw; H = nh; }
       mc.width = W; mc.height = H;
@@ -864,9 +943,26 @@ const C = (() => {
         const tx = t2.getContext('2d');
         tx.imageSmoothingEnabled = false;
         tx.drawImage(ly.canvas, 0, 0, nw, nh);
-        ly.canvas.width = nw; ly.canvas.height = nh;
+
+        ly.canvas.width = nw;
+        ly.canvas.height = nh;
         ly.ctx.imageSmoothingEnabled = false;
         ly.ctx.drawImage(t2, 0, 0);
+
+        if (ly.mask) {
+          const mt = document.createElement('canvas');
+          mt.width = nw;
+          mt.height = nh;
+          const mx = mt.getContext('2d');
+          mx.imageSmoothingEnabled = false;
+          mx.drawImage(ly.mask.canvas, 0, 0, nw, nh);
+
+          ly.mask.canvas.width = nw;
+          ly.mask.canvas.height = nh;
+          ly.mask.ctx = ly.mask.canvas.getContext('2d', { willReadFrequently: true });
+          ly.mask.ctx.imageSmoothingEnabled = false;
+          ly.mask.ctx.drawImage(mt, 0, 0);
+        }
       }
     }
     W = nw; H = nh;
@@ -1944,7 +2040,23 @@ const T = (() => {
       return;
     }
 
-    if (['brush', 'eraser', 'airbrush'].includes(cur)) {
+    if (Ly.isMaskEditing(la) && cur === 'brush') {
+      Hi.push();
+      ppPrev = null; ppPend = null;
+      Ly.paintMaskDot(la, pos.x, pos.y, bSz);
+      lastBP = { x: Math.floor(pos.x), y: Math.floor(pos.y) };
+      C.render();
+    }
+
+    else if (Ly.isMaskEditing(la) && cur === 'eraser') {
+      Hi.push();
+      ppPrev = null; ppPend = null;
+      Ly.paintMaskDot(la, pos.x, pos.y, bSz, 0);
+      lastBP = { x: Math.floor(pos.x), y: Math.floor(pos.y) };
+      C.render();
+    }
+
+    else if (['brush', 'eraser', 'airbrush'].includes(cur)) {
       Hi.push();
       ppPrev = null; ppPend = null;
       if (e.shiftKey && lastBP && (cur === 'brush' || cur === 'eraser')) {
@@ -2171,6 +2283,22 @@ const T = (() => {
       lp = { ...pos }; return;
     }
 
+    if (Ly.isMaskEditing(la) && cur === 'brush') {
+      Ly.paintMaskLine(la, lp.x, lp.y, pos.x, pos.y, bSz);
+      lastBP = { x: Math.floor(pos.x), y: Math.floor(pos.y) };
+      lp = { ...pos };
+      C.render();
+      return;
+    }
+
+    if (Ly.isMaskEditing(la) && cur === 'eraser') {
+      Ly.paintMaskLine(la, lp.x, lp.y, pos.x, pos.y, bSz, 0);
+      lastBP = { x: Math.floor(pos.x), y: Math.floor(pos.y) };
+      lp = { ...pos };
+      C.render();
+      return;
+    }
+
     if (cur === 'brush') {
       if (ppx && bSz <= 1 && !customBrush) {
         const nx = Math.floor(pos.x), ny = Math.floor(pos.y);
@@ -2355,6 +2483,9 @@ const T = (() => {
         oLy.ctx.clearRect(0, 0, C.W, C.H);
         oLy.ctx.drawImage(la.canvas, 0, 0);
       }
+    }
+    if (_layerSync && la && Ly.isMaskEditing(la) && ['brush', 'eraser'].includes(cur)) {
+      Ly.syncMaskToAllFrames(An.frames[An.cf].activeLayer);
     }
     mo = null; Ly.ui();
   }
@@ -2608,13 +2739,296 @@ const T = (() => {
 
 /* ===== LAYERS ===== */
 const Ly = (() => {
-  function mk(n) {
-    const c = document.createElement('canvas');
-    c.width = C.W; c.height = C.H;
-    const ctx = c.getContext('2d', { willReadFrequently: true });
-    ctx.imageSmoothingEnabled = false;
-    return { name: n || 'Layer', canvas: c, ctx, visible: true, opacity: 100, locked: false };
-  }
+    const _maskTmpCanvas = document.createElement('canvas');
+    const _maskTmpCtx = _maskTmpCanvas.getContext('2d', { willReadFrequently: true });
+    _maskTmpCtx.imageSmoothingEnabled = false;
+
+    function _fitMaskTmp() {
+      if (_maskTmpCanvas.width !== C.W) _maskTmpCanvas.width = C.W;
+      if (_maskTmpCanvas.height !== C.H) _maskTmpCanvas.height = C.H;
+      _maskTmpCtx.imageSmoothingEnabled = false;
+    }
+
+    function _refreshMaskCtx(mask) {
+      mask.ctx = mask.canvas.getContext('2d', { willReadFrequently: true });
+      mask.ctx.imageSmoothingEnabled = false;
+    }
+
+    function _mkMask() {
+      const mask = {
+        canvas: document.createElement('canvas'),
+        ctx: null,
+        enabled: true,
+        editing: true
+      };
+
+      mask.canvas.width = C.W;
+      mask.canvas.height = C.H;
+      _refreshMaskCtx(mask);
+
+      /* New masks start fully white = fully visible */
+      mask.ctx.fillStyle = 'rgba(255,255,255,1)';
+      mask.ctx.fillRect(0, 0, C.W, C.H);
+
+      return mask;
+    }
+
+    function ensureMask(layer) {
+      if (!layer.mask) layer.mask = _mkMask();
+      return layer.mask;
+    }
+
+    function cloneMask(mask) {
+      if (!mask) return null;
+
+      const copy = _mkMask();
+      copy.ctx.clearRect(0, 0, C.W, C.H);
+      copy.ctx.drawImage(mask.canvas, 0, 0);
+      copy.enabled = !!mask.enabled;
+      copy.editing = !!mask.editing;
+      return copy;
+    }
+
+    function clone(layer, newName = layer.name) {
+      const copy = mk(newName);
+      copy.ctx.drawImage(layer.canvas, 0, 0);
+      copy.opacity = layer.opacity;
+      copy.visible = layer.visible;
+      copy.locked = layer.locked;
+      copy.mask = cloneMask(layer.mask);
+      return copy;
+    }
+
+    function _grayFromHex(hex) {
+      const r = parseInt(hex.slice(1, 3), 16) || 0;
+      const g = parseInt(hex.slice(3, 5), 16) || 0;
+      const b = parseInt(hex.slice(5, 7), 16) || 0;
+      return Math.round(r * 0.299 + g * 0.587 + b * 0.114);
+    }
+
+    function isMaskEditing(layer) {
+      return !!(layer && layer.mask && layer.mask.enabled && layer.mask.editing);
+    }
+
+    function addMask() {
+      const f = fr();
+      if (!f) return;
+
+      const layer = f.layers[f.activeLayer];
+      if (!layer) return;
+
+      if (!layer.mask) Hi.push();
+
+      const mask = ensureMask(layer);
+      mask.enabled = true;
+      mask.editing = true;
+
+      if (_layerSync) syncMaskToAllFrames(f.activeLayer);
+
+      ui();
+      C.render();
+    }
+
+    function cycleMask(layer) {
+      if (!layer) return;
+
+      Hi.push();
+
+      if (!layer.mask) {
+        const mask = ensureMask(layer);
+        mask.enabled = true;
+        mask.editing = true;
+      } else if (layer.mask.editing) {
+        layer.mask.editing = false;
+        layer.mask.enabled = true;
+      } else if (layer.mask.enabled) {
+        layer.mask.enabled = false;
+        layer.mask.editing = false;
+      } else {
+        layer.mask.enabled = true;
+        layer.mask.editing = true;
+      }
+
+      if (_layerSync) syncMaskToAllFrames(An.frames[An.cf].activeLayer);
+
+      ui();
+      C.render();
+    }
+
+    function drawTo(ctx, layer) {
+      if (!layer.visible) return;
+
+      const prevAlpha = ctx.globalAlpha;
+      ctx.globalAlpha = prevAlpha * (layer.opacity / 100);
+
+      if (!layer.mask || !layer.mask.enabled) {
+        ctx.drawImage(layer.canvas, 0, 0);
+        ctx.globalAlpha = prevAlpha;
+        return;
+      }
+
+      _fitMaskTmp();
+      _maskTmpCtx.clearRect(0, 0, C.W, C.H);
+      _maskTmpCtx.globalAlpha = 1;
+
+      _maskTmpCtx.globalCompositeOperation = 'source-over';
+      _maskTmpCtx.drawImage(layer.canvas, 0, 0);
+
+      _maskTmpCtx.globalCompositeOperation = 'destination-in';
+      _maskTmpCtx.drawImage(layer.mask.canvas, 0, 0);
+
+      _maskTmpCtx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(_maskTmpCanvas, 0, 0);
+
+      ctx.globalAlpha = prevAlpha;
+    }
+
+    function _plotMaskLine(x0, y0, x1, y1, cb) {
+      x0 = Math.floor(x0); y0 = Math.floor(y0);
+      x1 = Math.floor(x1); y1 = Math.floor(y1);
+
+      const dx = Math.abs(x1 - x0);
+      const dy = Math.abs(y1 - y0);
+      const sx = x0 < x1 ? 1 : -1;
+      const sy = y0 < y1 ? 1 : -1;
+      let err = dx - dy;
+
+      for (;;) {
+        cb(x0, y0);
+        if (x0 === x1 && y0 === y1) break;
+        const e2 = err * 2;
+        if (e2 > -dy) { err -= dy; x0 += sx; }
+        if (e2 < dx) { err += dx; y0 += sy; }
+      }
+    }
+
+    function paintMaskDot(layer, x, y, sz, forcedGray = null) {
+      const mask = ensureMask(layer);
+      const gray = forcedGray === null ? _grayFromHex(C.pc) : forcedGray;
+
+      const size = Math.max(1, Math.round(sz));
+      const half = size / 2;
+
+      const left = Math.max(0, Math.floor(x - half) - 1);
+      const top = Math.max(0, Math.floor(y - half) - 1);
+      const right = Math.min(C.W - 1, Math.ceil(x + half) + 1);
+      const bottom = Math.min(C.H - 1, Math.ceil(y + half) + 1);
+
+      const w = right - left + 1;
+      const h = bottom - top + 1;
+      if (w <= 0 || h <= 0) return;
+      const id = mask.ctx.getImageData(left, top, w, h);
+      const d = id.data;
+
+      const useSquare = T.brushShape === 'square';
+      const radius = size / 2;
+      const r2 = radius * radius;
+
+      for (let py = 0; py < h; py++) {
+        for (let px = 0; px < w; px++) {
+          const gx = left + px;
+          const gy = top + py;
+
+          if (T.selection && !T.selectionHit(gx, gy)) continue;
+
+          let inside = false;
+
+          if (useSquare) {
+            inside =
+              Math.abs((gx + 0.5) - (x + 0.5)) <= radius &&
+              Math.abs((gy + 0.5) - (y + 0.5)) <= radius;
+          } else {
+            const dx = (gx + 0.5) - (x + 0.5);
+            const dy = (gy + 0.5) - (y + 0.5);
+            inside = (dx * dx + dy * dy) <= r2;
+          }
+
+          if (!inside) continue;
+
+          const i = (py * w + px) * 4;
+          d[i] = gray;
+          d[i + 1] = gray;
+          d[i + 2] = gray;
+          d[i + 3] = gray;
+        }
+      }
+
+      mask.ctx.putImageData(id, left, top);
+    }
+
+    function paintMaskLine(layer, x0, y0, x1, y1, sz, forcedGray = null) {
+      _plotMaskLine(x0, y0, x1, y1, (px, py) => {
+        paintMaskDot(layer, px, py, sz, forcedGray);
+      });
+    }
+
+    function applyMask() {
+      const f = fr();
+      if (!f) return;
+
+      const layer = f.layers[f.activeLayer];
+      if (!layer || !layer.mask) return;
+
+      Hi.push();
+
+      const art = layer.ctx.getImageData(0, 0, C.W, C.H);
+      const a = art.data;
+      const m = layer.mask.ctx.getImageData(0, 0, C.W, C.H).data;
+
+      for (let i = 0; i < a.length; i += 4) {
+        a[i + 3] = Math.round(a[i + 3] * (m[i + 3] / 255));
+      }
+
+      layer.ctx.putImageData(art, 0, 0);
+
+      /* After Apply Mask, remove the live mask completely */
+      layer.mask = null;
+
+      if (_layerSync) {
+        const idx = f.activeLayer;
+        for (let fi = 0; fi < An.frames.length; fi++) {
+          if (fi === An.cf) continue;
+          const other = An.frames[fi].layers[idx];
+          if (!other) continue;
+          other.ctx.clearRect(0, 0, C.W, C.H);
+          other.ctx.drawImage(layer.canvas, 0, 0);
+          other.mask = null;
+        }
+      }
+
+      ui();
+      C.render();
+    }
+
+    function syncMaskToAllFrames(layerIndex) {
+      const src = An.frames[An.cf].layers[layerIndex];
+      if (!src) return;
+
+      for (let fi = 0; fi < An.frames.length; fi++) {
+        if (fi === An.cf) continue;
+        const dst = An.frames[fi].layers[layerIndex];
+        if (!dst) continue;
+        dst.mask = cloneMask(src.mask);
+      }
+    }
+    function mk(n) {
+      const c = document.createElement('canvas');
+      c.width = C.W; c.height = C.H;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      ctx.imageSmoothingEnabled = false;
+
+      return {
+        name: n || 'Layer',
+        canvas: c,
+        ctx,
+        visible: true,
+        opacity: 100,
+        locked: false,
+
+        /* NEW */
+        mask: null
+      };
+    }
 
   function fr() { return An.frames[An.cf]; }
 
@@ -2636,11 +3050,7 @@ const Ly = (() => {
   function dup() {
     const f = fr(); if (!f) return;
     const s = f.layers[f.activeLayer];
-    const d = mk(s.name + ' copy');
-    d.ctx.drawImage(s.canvas, 0, 0);
-    d.opacity = s.opacity;
-    d.visible = s.visible;
-    d.locked = s.locked;
+    const d = clone(s, s.name + ' copy');
     f.layers.splice(f.activeLayer + 1, 0, d);
     f.activeLayer++;
     ui(); C.render();
@@ -2667,9 +3077,7 @@ const Ly = (() => {
     const i = f.activeLayer;
     if (i <= 0) return;
     Hi.push();
-    f.layers[i - 1].ctx.globalAlpha = f.layers[i].opacity / 100;
-    f.layers[i - 1].ctx.drawImage(f.layers[i].canvas, 0, 0);
-    f.layers[i - 1].ctx.globalAlpha = 1;
+    Ly.drawTo(f.layers[i - 1].ctx, f.layers[i]);
     f.layers.splice(i, 1);
     f.activeLayer = i - 1;
     ui(); C.render();
@@ -2681,9 +3089,7 @@ const Ly = (() => {
     const m = mk('Flat');
     if (C.bg === 'white') { m.ctx.fillStyle = '#fff'; m.ctx.fillRect(0, 0, C.W, C.H); }
     for (const ly of f.layers) {
-      if (!ly.visible) continue;
-      m.ctx.globalAlpha = ly.opacity / 100;
-      m.ctx.drawImage(ly.canvas, 0, 0);
+      Ly.drawTo(m.ctx, ly);
     }
     m.ctx.globalAlpha = 1;
     f.layers = [m]; f.activeLayer = 0;
@@ -2697,9 +3103,7 @@ const Ly = (() => {
     for (let i = 0; i < An.frames.length; i++) {
       if (i === An.cf) continue;
       const frame = An.frames[i];
-      const cp = mk(src.name);
-      cp.ctx.drawImage(src.canvas, 0, 0);
-      cp.opacity = src.opacity; cp.visible = src.visible; cp.locked = src.locked;
+      const cp = clone(src);
       const ins = Math.min(idx, frame.layers.length);
       frame.layers.splice(ins, 0, cp);
       if (frame.activeLayer >= ins) frame.activeLayer++;
@@ -2715,9 +3119,7 @@ const Ly = (() => {
     for (const i of T.selFrames) {
       if (i === An.cf || !An.frames[i]) continue;
       const frame = An.frames[i];
-      const cp = mk(src.name);
-      cp.ctx.drawImage(src.canvas, 0, 0);
-      cp.opacity = src.opacity; cp.visible = src.visible; cp.locked = src.locked;
+      const cp = clone(src);
       const ins = Math.min(idx, frame.layers.length);
       frame.layers.splice(ins, 0, cp);
       if (frame.activeLayer >= ins) frame.activeLayer++;
@@ -2792,15 +3194,48 @@ const Ly = (() => {
       const div = document.createElement('div');
       div.className = 'li' + (i === f.activeLayer ? ' act' : '');
       const th = document.createElement('canvas');
-      th.className = 'lt'; th.width = 28; th.height = 16;
-      th.getContext('2d').drawImage(ly.canvas, 0, 0, 28, 16);
-      const nm = document.createElement('span');
-      nm.className = 'ln';
-      nm.textContent = ly.name;
-      nm.ondblclick = () => {
-        const n = prompt('Name:', ly.name);
-        if (n) { ly.name = n; ui(); }
-      };
+        th.className = 'lt';
+        th.width = 28;
+        th.height = 16;
+
+        const preview = document.createElement('canvas');
+        preview.width = C.W;
+        preview.height = C.H;
+
+        const pctx = preview.getContext('2d', { willReadFrequently: true });
+        pctx.imageSmoothingEnabled = false;
+        Ly.drawTo(pctx, ly);
+
+        th.getContext('2d').drawImage(preview, 0, 0, 28, 16);
+      const mb = document.createElement('button');
+        mb.type = 'button';
+        mb.className = 'lm';
+        mb.textContent = '▣';
+
+        if (!ly.mask) mb.classList.add('off');
+        else if (ly.mask.editing) mb.classList.add('edit');
+        else if (ly.mask.enabled) mb.classList.add('on');
+        else mb.classList.add('off');
+
+        mb.title =
+          !ly.mask ? 'Add Mask' :
+          ly.mask.editing ? 'Mask editing ON' :
+          ly.mask.enabled ? 'Mask ON' :
+          'Mask OFF';
+
+        mb.onclick = ev => {
+          ev.stopPropagation();
+          f.activeLayer = i;
+          cycleMask(ly);
+        };
+
+        const nm = document.createElement('span');
+        nm.className = 'ln';
+        nm.textContent = ly.name;
+        nm.ondblclick = () => {
+          const n = prompt('Name:', ly.name);
+          if (n) { ly.name = n; ui(); }
+        };
       const lk = document.createElement('span');
       lk.className = 'lv';
       lk.textContent = ly.locked ? '\u{1F512}' : '\u{1F513}';
@@ -2830,7 +3265,7 @@ const Ly = (() => {
         }
         ui(); C.render();
       };
-      div.append(th, nm, lk, vs);
+      div.append(th, mb, nm, lk, vs);
       div.onclick = () => { f.activeLayer = i; ui(); sOp(); };
       list.append(div);
     }
@@ -2845,7 +3280,21 @@ const Ly = (() => {
     document.getElementById('lov').textContent = ly.opacity;
   }
 
-   return { mk, add, rm, dup, up, dn, mergeDown, flatten, syncAll, syncSel, rmAll, detachAll, detachSel, ren, ui, sOp };
+   return {
+  mk,
+  clone,
+  ensureMask,
+  cloneMask,
+  isMaskEditing,
+  addMask,
+  cycleMask,
+  drawTo,
+  paintMaskDot,
+  paintMaskLine,
+  applyMask,
+  syncMaskToAllFrames,
+  add, rm, dup, up, dn, mergeDown, flatten, syncAll, syncSel, rmAll, detachAll, detachSel, ren, ui, sOp
+};
 })();
 
 /* ===== ANIMATION ===== */
@@ -2867,10 +3316,7 @@ const An = (() => {
     const s = frames[cf];
     const d = { layers: [], activeLayer: s.activeLayer, duration: s.duration };
     for (const ly of s.layers) {
-      const nl = Ly.mk(ly.name);
-      nl.ctx.drawImage(ly.canvas, 0, 0);
-      nl.opacity = ly.opacity; nl.visible = ly.visible; nl.locked = ly.locked;
-      d.layers.push(nl);
+  d.layers.push(Ly.clone(ly));
     }
     frames.splice(cf + 1, 0, d);
     cf++; uStrip(); Ly.ui(); C.render();
@@ -2995,9 +3441,8 @@ const An = (() => {
       c2.width = TW; c2.height = TH;
       const cx = c2.getContext('2d');
       cx.imageSmoothingEnabled = false;
-      for (const ly of fr.layers) {
-        if (ly.visible) { cx.globalAlpha = ly.opacity / 100; cx.drawImage(ly.canvas, 0, 0, TW, TH); }
-      }
+      const full = C.compFrame(fr).canvas;
+       cx.drawImage(full, 0, 0, TW, TH);
       const sp = document.createElement('span');
       sp.textContent = (i + 1) + ' ' + fr.duration + 'ms';
       div.append(c2, sp);
@@ -3093,9 +3538,12 @@ const Hi = (() => {
 
   /** Calculate max undo depth based on project complexity */
   function maxDepth() {
-    const totalLayers = An.frames.reduce((s, f) => s + f.layers.length, 0);
+    const totalSurfaces = An.frames.reduce(
+  (sum, f) => sum + f.layers.reduce((n, ly) => n + 1 + (ly.mask ? 1 : 0), 0),
+      0
+    );
     const pixelBytes = C.W * C.H * 4;
-    const snapshotBytes = totalLayers * pixelBytes;
+    const snapshotBytes = totalSurfaces * pixelBytes;
     /* Target ~200 MB of undo memory max */
     const MAX_BYTES = 150 * 1024 * 1024;
     return Math.max(5, Math.min(50, Math.floor(MAX_BYTES / Math.max(1, snapshotBytes))));
@@ -3109,7 +3557,22 @@ const Hi = (() => {
         const c = document.createElement('canvas');
         c.width = C.W; c.height = C.H;
         c.getContext('2d').drawImage(ly.canvas, 0, 0);
-        fl.layers.push({ n: ly.name, o: ly.opacity, v: ly.visible, k: ly.locked, c });
+        let m = null;
+        if (ly.mask) {
+          const mc = document.createElement('canvas');
+          mc.width = C.W; mc.height = C.H;
+          mc.getContext('2d').drawImage(ly.mask.canvas, 0, 0);
+          m = { c: mc, e: ly.mask.enabled, x: ly.mask.editing };
+        }
+
+        fl.layers.push({
+          n: ly.name,
+          o: ly.opacity,
+          v: ly.visible,
+          k: ly.locked,
+          c,
+          m
+        });
       }
       out.frames.push(fl);
     }
@@ -3134,10 +3597,24 @@ const Hi = (() => {
         const fr = { layers: [], activeLayer: fs.al, duration: fs.dur || 100 };
         for (const ls of fs.layers) {
           const ly = Ly.mk(ls.n);
-          ly.canvas.width = rw; ly.canvas.height = rh;
-          ly.opacity = ls.o; ly.visible = ls.v; ly.locked = ls.k;
-          ly.ctx.drawImage(ls.c, 0, 0);
-          fr.layers.push(ly);
+            ly.canvas.width = rw; ly.canvas.height = rh;
+            ly.opacity = ls.o;
+            ly.visible = ls.v;
+            ly.locked = ls.k;
+            ly.ctx.drawImage(ls.c, 0, 0);
+
+            if (ls.m) {
+              ly.mask = Ly.ensureMask(ly);
+              ly.mask.canvas.width = rw;
+              ly.mask.canvas.height = rh;
+              ly.mask.ctx = ly.mask.canvas.getContext('2d', { willReadFrequently: true });
+              ly.mask.ctx.imageSmoothingEnabled = false;
+              ly.mask.ctx.drawImage(ls.m.c, 0, 0);
+              ly.mask.enabled = !!ls.m.e;
+              ly.mask.editing = !!ls.m.x;
+            }
+
+            fr.layers.push(ly);
         }
         An.frames.push(fr);
       }
@@ -3549,8 +4026,18 @@ const U = (() => {
     for (const fr of An.frames) {
       for (const ly of fr.layers) {
         const id = ly.ctx.getImageData(sx, sy, sw, sh);
-        ly.canvas.width = sw; ly.canvas.height = sh;
+        ly.canvas.width = sw;
+        ly.canvas.height = sh;
         ly.ctx.putImageData(id, 0, 0);
+
+        if (ly.mask) {
+          const mid = ly.mask.ctx.getImageData(sx, sy, sw, sh);
+          ly.mask.canvas.width = sw;
+          ly.mask.canvas.height = sh;
+          ly.mask.ctx = ly.mask.canvas.getContext('2d', { willReadFrequently: true });
+          ly.mask.ctx.imageSmoothingEnabled = false;
+          ly.mask.ctx.putImageData(mid, 0, 0);
+        }
       }
     }
     C.init(sw, sh, C.bg); T.selection = null;
@@ -3579,9 +4066,19 @@ const U = (() => {
     for (const frm of An.frames) {
       for (const ly of frm.layers) {
         const id = ly.ctx.getImageData(x0, y0, nw, nh);
-        ly.canvas.width = nw; ly.canvas.height = nh;
+        ly.canvas.width = nw;
+        ly.canvas.height = nh;
         ly.ctx.putImageData(id, 0, 0);
-      }
+
+        if (ly.mask) {
+          const mid = ly.mask.ctx.getImageData(x0, y0, nw, nh);
+          ly.mask.canvas.width = nw;
+          ly.mask.canvas.height = nh;
+          ly.mask.ctx = ly.mask.canvas.getContext('2d', { willReadFrequently: true });
+          ly.mask.ctx.imageSmoothingEnabled = false;
+          ly.mask.ctx.putImageData(mid, 0, 0);
+            }
+        }
     }
     C.init(nw, nh, C.bg); T.selection = null;
     requestAnimationFrame(() => { C.zFit(); Ly.ui(); });
@@ -4828,11 +5325,9 @@ const IO = (() => {
     cx.imageSmoothingEnabled = false;
     if (C.bg === 'white') { cx.fillStyle = '#fff'; cx.fillRect(0, 0, C.W, C.H); }
     for (const ly of fr.layers) {
-      if (!ly.visible) continue;
-      cx.globalAlpha = ly.opacity / 100;
-      cx.drawImage(ly.canvas, 0, 0);
-    }
-    cx.globalAlpha = 1;
+  Ly.drawTo(cx, ly);
+}
+cx.globalAlpha = 1;
     return c;
   }
 
@@ -5105,16 +5600,24 @@ const IO = (() => {
   function save() {
     try {
       const pr = {
-        v: 13, app: 'imagus', w: C.W, h: C.H, bg: C.bg,
-        pc: C.pc, sc: C.sc, cf: An.cf,
-        frames: An.frames.map(f => ({
-          al: f.activeLayer, dur: f.duration,
-          layers: f.layers.map(ly => ({
-            n: ly.name, o: ly.opacity, v: ly.visible, k: ly.locked,
-            d: ly.canvas.toDataURL('image/png')
+          v: 14, app: 'imagus', w: C.W, h: C.H, bg: C.bg,
+          pc: C.pc, sc: C.sc, cf: An.cf,
+          frames: An.frames.map(f => ({
+            al: f.activeLayer, dur: f.duration,
+            layers: f.layers.map(ly => ({
+              n: ly.name,
+              o: ly.opacity,
+              v: ly.visible,
+              k: ly.locked,
+              d: ly.canvas.toDataURL('image/png'),
+              m: ly.mask ? {
+                e: ly.mask.enabled,
+                x: ly.mask.editing,
+                d: ly.mask.canvas.toDataURL('image/png')
+              } : null
+            }))
           }))
-        }))
-      };
+        };
       const bl = new Blob([JSON.stringify(pr)], { type: 'application/json' });
       const url = BlobURLs.create(bl);
       const a = document.createElement('a');
@@ -5310,21 +5813,43 @@ const IO = (() => {
           const fr = { layers: [], activeLayer: fs.al || 0, duration: fs.dur || 100 };
           for (const ls of fs.layers) {
             const ly = Ly.mk(ls.n || 'Layer');
-            ly.opacity = typeof ls.o === 'number' ? ls.o : 100;
-            ly.visible = ls.v !== false;
-            ly.locked = !!ls.k;
-            if (ls.d) {
-              const im = new Image();
-              ps.push(new Promise(resolve => {
-                im.onload = () => { ly.ctx.drawImage(im, 0, 0); resolve(); };
-                im.onerror = () => {
-                  console.warn('Failed to load layer image data for:', ls.n);
-                  resolve(); /* Continue even if one layer image fails */
-                };
-              }));
-              im.src = ls.d;
-            }
-            fr.layers.push(ly);
+                ly.opacity = typeof ls.o === 'number' ? ls.o : 100;
+                ly.visible = ls.v !== false;
+                ly.locked = !!ls.k;
+
+                if (ls.d) {
+                  const im = new Image();
+                  ps.push(new Promise(resolve => {
+                    im.onload = () => { ly.ctx.drawImage(im, 0, 0); resolve(); };
+                    im.onerror = () => {
+                      console.warn('Failed to load layer image data for:', ls.n);
+                      resolve();
+                    };
+                  }));
+                  im.src = ls.d;
+                }
+
+                if (ls.m && ls.m.d) {
+                  const mm = Ly.ensureMask(ly);
+                  mm.enabled = !!ls.m.e;
+                  mm.editing = !!ls.m.x;
+
+                  const mim = new Image();
+                  ps.push(new Promise(resolve => {
+                    mim.onload = () => {
+                      mm.ctx.clearRect(0, 0, C.W, C.H);
+                      mm.ctx.drawImage(mim, 0, 0);
+                      resolve();
+                    };
+                    mim.onerror = () => {
+                      console.warn('Failed to load mask image data for:', ls.n);
+                      resolve();
+                    };
+                  }));
+                  mim.src = ls.m.d;
+                }
+
+                fr.layers.push(ly);
           }
           /* Ensure at least one layer */
           if (fr.layers.length === 0) fr.layers.push(Ly.mk('Layer 1'));
