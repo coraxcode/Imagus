@@ -70,6 +70,61 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
 .mo input[type="number"],.mo input[type="text"],.mo input[type="color"],.mo select{width:80px;background:var(--bg1);border:1px solid var(--bd);color:var(--tx);padding:2px 4px;border-radius:2px;font-family:inherit;font-size:11px;outline:none}
 .mo input:focus,.mo select:focus{border-color:var(--acc)}
 .mo textarea{width:100%;height:100px;background:var(--bg1);border:1px solid var(--bd);color:var(--tx);padding:4px;border-radius:2px;font-family:inherit;font-size:9px;outline:none;resize:vertical}
+.ofx-top{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:var(--sp3);
+  margin-bottom:var(--sp4);
+}
+
+.ofx-grid{
+  display:grid;
+  grid-template-columns:repeat(3, 30px);
+  gap:4px;
+  justify-content:center;
+  margin:8px 0 10px;
+}
+
+.ofx-cell{
+  width:30px;
+  height:30px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:var(--bg1);
+  border:1px solid var(--bd);
+  color:var(--tx);
+  border-radius:3px;
+  cursor:pointer;
+  font-family:inherit;
+  font-size:12px;
+}
+
+.ofx-cell:hover{
+  background:var(--bg3);
+}
+
+.ofx-cell.on{
+  background:var(--accg);
+  border-color:var(--acc);
+  color:var(--txb);
+}
+
+.ofx-checks{
+  display:flex;
+  gap:14px;
+  margin-top:6px;
+  margin-bottom:10px;
+}
+
+.ofx-bottom{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:var(--sp3);
+  margin-top:var(--sp4);
+}
 .mb{display:flex;justify-content:flex-end;gap:var(--sp3);margin-top:var(--sp4)}
 .bp{background:var(--acc);border:none;color:#fff;padding:3px var(--sp4);border-radius:2px;cursor:pointer;font-family:inherit;font-size:10px;font-weight:600}.bp:hover{filter:brightness(1.1)}
 .bsc{background:var(--bg1);border:1px solid var(--bd);color:var(--tx);padding:3px var(--sp4);border-radius:2px;cursor:pointer;font-family:inherit;font-size:10px}.bsc:hover{background:var(--bg3)}
@@ -116,6 +171,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
       <div onclick="U.levels()">Levels</div><div class="sep"></div>
       <div onclick="U.blurImg()">Blur Image…</div>
       <div onclick="U.stroke()">Stroke</div>
+      <div onclick="U.outlineFX()">Outline FX…</div>
       <div onclick="U.replaceColor()">Replace Color</div>
       <div onclick="U.colorRange()">Color Range (Select)</div>
       <div class="sep"></div>
@@ -4247,6 +4303,276 @@ const U = (() => {
     _adjBk = null; cMo(); Ly.ui();
   }
 
+  /* Outline FX (Aseprite-like 1px directional outline) */
+  let _outlineFxLivePreview = false;
+
+  function outlineFX() {
+    const la = T.activeLayer();
+    if (!la) return;
+    if (!_adjSv()) return;
+
+    _outlineFxLivePreview = false;
+
+    sMo(`
+      <div class="ofx-top">
+        <h3 style="margin:0">Outline FX</h3>
+        <button class="bsc" onclick="U.closeOutlineFX()">Close</button>
+      </div>
+
+      <label>
+        Color
+        <input
+          type="color"
+          id="ofx_color"
+          value="${C.pc}"
+          style="width:48px;height:24px;padding:0"
+          oninput="U.previewOutlineFX()"
+        >
+      </label>
+
+      <div class="ofx-grid">
+        <button class="ofx-cell on" data-dx="-1" data-dy="-1" onclick="U.toggleOutlineFXCell(this)" title="Top Left">↖</button>
+        <button class="ofx-cell on" data-dx="0"  data-dy="-1" onclick="U.toggleOutlineFXCell(this)" title="Middle Top">↑</button>
+        <button class="ofx-cell on" data-dx="1"  data-dy="-1" onclick="U.toggleOutlineFXCell(this)" title="Top Right">↗</button>
+
+        <button class="ofx-cell on" data-dx="-1" data-dy="0"  onclick="U.toggleOutlineFXCell(this)" title="Middle Left">←</button>
+        <button class="ofx-cell"    data-dx="0"  data-dy="0"  onclick="U.toggleOutlineFXCell(this)" title="Center">•</button>
+        <button class="ofx-cell on" data-dx="1"  data-dy="0"  onclick="U.toggleOutlineFXCell(this)" title="Middle Right">→</button>
+
+        <button class="ofx-cell on" data-dx="-1" data-dy="1"  onclick="U.toggleOutlineFXCell(this)" title="Bottom Left">↙</button>
+        <button class="ofx-cell on" data-dx="0"  data-dy="1"  onclick="U.toggleOutlineFXCell(this)" title="Middle Bottom">↓</button>
+        <button class="ofx-cell on" data-dx="1"  data-dy="1"  onclick="U.toggleOutlineFXCell(this)" title="Bottom Right">↘</button>
+      </div>
+
+      <div class="ofx-checks">
+        <label style="justify-content:flex-start;gap:6px">
+          <input type="checkbox" id="ofx_outside" checked onchange="U.previewOutlineFX()">
+          Outside
+        </label>
+
+        <label style="justify-content:flex-start;gap:6px">
+          <input type="checkbox" id="ofx_inside" onchange="U.previewOutlineFX()">
+          Inside
+        </label>
+      </div>
+
+      <div class="ofx-bottom">
+        <button class="bsc" onclick="U.closeOutlineFX()">Cancel</button>
+        <div style="display:flex;gap:var(--sp3)">
+          <button class="bsc" onclick="U.applyOutlineFX()">Apply</button>
+          <button class="bp" onclick="U.okOutlineFX()">OK</button>
+        </div>
+      </div>
+    `);
+
+    previewOutlineFX();
+  }
+
+  function toggleOutlineFXCell(btn) {
+    btn.classList.toggle('on');
+    previewOutlineFX();
+  }
+
+  function _outlineFXReadState() {
+    const color = document.getElementById('ofx_color').value || C.pc;
+    const outside = document.getElementById('ofx_outside').checked;
+    const inside = document.getElementById('ofx_inside').checked;
+
+    const matrix = [...document.querySelectorAll('.ofx-cell')].map(btn => ({
+      dx: +btn.dataset.dx,
+      dy: +btn.dataset.dy,
+      on: btn.classList.contains('on')
+    }));
+
+    return { color, outside, inside, matrix };
+  }
+
+  function _outlineFXParseColor(hex) {
+    return {
+      r: parseInt(hex.slice(1, 3), 16) || 0,
+      g: parseInt(hex.slice(3, 5), 16) || 0,
+      b: parseInt(hex.slice(5, 7), 16) || 0,
+      a: 255
+    };
+  }
+
+  function _outlineFXBuildImage(baseImageData, state) {
+    const w = baseImageData.width;
+    const h = baseImageData.height;
+    const src = baseImageData.data;
+
+    const result = new ImageData(new Uint8ClampedArray(src), w, h);
+    const dst = result.data;
+
+    const activeOffsets = state.matrix.filter(item => item.on);
+    if ((!state.outside && !state.inside) || !activeOffsets.length) return result;
+
+    const color = _outlineFXParseColor(state.color);
+    const hasSelection = !!T.selection;
+    const bounds = T.selectionBounds ? T.selectionBounds() : null;
+    const centerOn = activeOffsets.some(item => item.dx === 0 && item.dy === 0);
+
+    function inBounds(x, y) {
+      return x >= 0 && y >= 0 && x < w && y < h;
+    }
+
+    function isSelected(x, y) {
+      return !hasSelection || T.selectionHit(x, y);
+    }
+
+    function isSource(x, y) {
+      if (!inBounds(x, y)) return false;
+      if (!isSelected(x, y)) return false;
+      return src[(y * w + x) * 4 + 3] > 0;
+    }
+
+    function isBackground(x, y) {
+      if (!inBounds(x, y)) return true;
+      if (hasSelection && !isSelected(x, y)) return true;
+      return src[(y * w + x) * 4 + 3] === 0;
+    }
+
+    let minX = w, minY = h, maxX = -1, maxY = -1;
+
+    const scanX0 = bounds ? bounds.x : 0;
+    const scanY0 = bounds ? bounds.y : 0;
+    const scanX1 = bounds ? (bounds.x + bounds.w - 1) : (w - 1);
+    const scanY1 = bounds ? (bounds.y + bounds.h - 1) : (h - 1);
+
+    for (let y = scanY0; y <= scanY1; y++) {
+      for (let x = scanX0; x <= scanX1; x++) {
+        if (!isSource(x, y)) continue;
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+    }
+
+    if (maxX < minX || maxY < minY) return result;
+
+    const x0 = Math.max(0, minX - 1);
+    const y0 = Math.max(0, minY - 1);
+    const x1 = Math.min(w - 1, maxX + 1);
+    const y1 = Math.min(h - 1, maxY + 1);
+
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const i = (y * w + x) * 4;
+        const source = isSource(x, y);
+        let paint = false;
+
+        if (state.outside && !source) {
+          for (const item of activeOffsets) {
+            if (isSource(x - item.dx, y - item.dy)) {
+              paint = true;
+              break;
+            }
+          }
+        }
+
+        if (!paint && state.inside && source) {
+          if (centerOn) {
+            paint = true;
+          } else {
+            for (const item of activeOffsets) {
+              if (item.dx === 0 && item.dy === 0) continue;
+              if (isBackground(x + item.dx, y + item.dy)) {
+                paint = true;
+                break;
+              }
+            }
+          }
+        }
+
+        if (!paint) continue;
+
+        dst[i] = color.r;
+        dst[i + 1] = color.g;
+        dst[i + 2] = color.b;
+        dst[i + 3] = color.a;
+      }
+    }
+
+    return result;
+  }
+
+  function previewOutlineFX() {
+    const la = T.activeLayer();
+    if (!la || !_adjBk) return;
+
+    la.ctx.putImageData(_adjBk, 0, 0);
+
+    const state = _outlineFXReadState();
+    const result = _outlineFXBuildImage(_adjBk, state);
+
+    la.ctx.putImageData(result, 0, 0);
+    _outlineFxLivePreview = true;
+
+    C.render();
+  }
+
+  function applyOutlineFX() {
+    const la = T.activeLayer();
+    if (!la || !_adjBk) return;
+
+    const state = _outlineFXReadState();
+
+    la.ctx.putImageData(_adjBk, 0, 0);
+    Hi.push();
+
+    const result = _outlineFXBuildImage(_adjBk, state);
+    la.ctx.putImageData(result, 0, 0);
+
+    _adjBk = la.ctx.getImageData(0, 0, C.W, C.H);
+    _outlineFxLivePreview = false;
+
+    C.render();
+    Ly.ui();
+  }
+
+  function okOutlineFX() {
+    const la = T.activeLayer();
+    if (!la) {
+      _adjBk = null;
+      _outlineFxLivePreview = false;
+      cMo();
+      return;
+    }
+
+    if (_outlineFxLivePreview && _adjBk) {
+      const state = _outlineFXReadState();
+
+      la.ctx.putImageData(_adjBk, 0, 0);
+      Hi.push();
+
+      const result = _outlineFXBuildImage(_adjBk, state);
+      la.ctx.putImageData(result, 0, 0);
+    }
+
+    _adjBk = null;
+    _outlineFxLivePreview = false;
+    cMo();
+
+    C.render();
+    Ly.ui();
+  }
+
+  function closeOutlineFX() {
+    const la = T.activeLayer();
+
+    if (la && _adjBk) {
+      la.ctx.putImageData(_adjBk, 0, 0);
+    }
+
+    _adjBk = null;
+    _outlineFxLivePreview = false;
+    cMo();
+
+    C.render();
+    Ly.ui();
+  }
+
   /* Replace Color */
   function replaceColor() {
     sMo(`<h3>Replace Color</h3><label>Source<input type="color" id="rc_src" value="${C.pc}" style="width:40px;height:20px;padding:0"></label><label>Hex<input type="text" id="rc_srch" value="${C.pc}" maxlength="7" style="width:70px"></label><label>Target<input type="color" id="rc_dst" value="${C.sc}" style="width:40px;height:20px;padding:0"></label><label>Hex<input type="text" id="rc_dsth" value="${C.sc}" maxlength="7" style="width:70px"></label><label>Tol<input type="range" id="rc_tol" min="0" max="128" value="0" style="width:80px" oninput="this.nextElementSibling.textContent=this.value"><span>0</span></label><div class="mb"><button class="bsc" onclick="U.cMo()">Cancel</button><button class="bp" onclick="U.apRC()">Replace</button></div>`);
@@ -4480,8 +4806,10 @@ const U = (() => {
     _adjCancel,
     desat: _lg(desat), invertCol: _lg(invertCol),    /* ← ← */
     levels, prevLv, apLv,
-    stroke, prevSk, apSk, replaceColor,
-    apRC: _lg(apRC),                                 /* ← */
+    stroke, prevSk, apSk,
+    outlineFX, previewOutlineFX, applyOutlineFX, okOutlineFX, closeOutlineFX, toggleOutlineFXCell,
+    replaceColor,
+    apRC: _lg(apRC),                              /* ← */
     colorRange, apCR,
     gridCfg, applyGrid, checkerCfg, tiledCfg, textDlg, aTxt: _lg(aTxt),
     tweenDlg, apTw, togTheme, togCvOnly, showKeys, apK, svKF, ldKF,
