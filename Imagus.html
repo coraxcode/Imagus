@@ -2325,7 +2325,12 @@ const T = (() => {
       C.render();
     }
     else if (cur === 'smooth') { Hi.push(); applySmooth(la.ctx, pos.x, pos.y, bSz); C.render(); }
-    else if (cur === 'jumble') { Hi.push(); applyJumble(la.ctx, pos.x, pos.y, bSz); C.render(); }
+    else if (cur === 'jumble') {
+      Hi.push();
+      lp = { x: pos.x, y: pos.y };
+      applyJumble(la.ctx, pos.x, pos.y, bSz);
+      C.render();
+    }
     else if (cur === 'lightdark') {
       Hi.push();
       applyLightDark(la.ctx, pos.x, pos.y, ldSize, getLightDarkDelta(isR));
@@ -2976,7 +2981,7 @@ const T = (() => {
     if (floating) commitFloat();
     tfMode = false;
     /* Keep selection active — user may want to constrain brush/fill to selection area */
-    cur = t; tc = null; tx = null; contourPts = null; mo = null; ppPrev = null; ppPend = null;
+    cur = t; tc = null; tx = null; contourPts = null; mo = null; ppPrev = null; ppPend = null; lp = null; ds = null;
     document.querySelectorAll('.tb').forEach(b => b.classList.toggle('on', b.dataset.tool === t));
     U.uTopt(); C.render();
   }
@@ -2991,7 +2996,7 @@ const T = (() => {
       cur = ctrlPick; ctrlPick = null;
       document.querySelectorAll('.tb').forEach(b => b.classList.toggle('on', b.dataset.tool === cur));
     }
-    spaceDown = false; drag = false; mo = null; tc = null; tx = null; contourPts = null;
+    spaceDown = false; drag = false; mo = null; tc = null; tx = null; contourPts = null; lp = null; ds = null;
     ppPrev = null; ppPend = null;
   }
 
