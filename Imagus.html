@@ -195,28 +195,47 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg0);color:var
       <div onclick="Hi.undo()">Undo<span class="sc">Ctrl+Z</span></div><div onclick="Hi.redo()">Redo<span class="sc">Ctrl+Y</span></div>
     </div></div>
     <div class="mi">Image<div class="md">
-      <div onclick="C.flipC('h')">Flip H</div><div onclick="C.flipC('v')">Flip V</div><div class="sep"></div>
-      <div onclick="C.rotC(180)">Rotate 180°</div><div onclick="C.rotC(90)">Rotate 90° CW</div><div onclick="C.rotC(-90)">Rotate 90° CCW</div>
-      <div onclick="T.startFreeRot()">Free Rotate</div><div class="sep"></div>
-      <div class="sub">Shift ▸<div class="md">
-        <div onclick="U.shiftPx(-1,0)">Left<span class="sc">←</span></div>
-        <div onclick="U.shiftPx(1,0)">Right<span class="sc">→</span></div>
-        <div onclick="U.shiftPx(0,-1)">Up<span class="sc">↑</span></div>
-        <div onclick="U.shiftPx(0,1)">Down<span class="sc">↓</span></div>
-      </div></div><div class="sep"></div>
-      <div onclick="U.imgSize()">Image Size</div><div onclick="U.crop()">Crop to Selection</div>
-      <div onclick="U.trim()">Trim</div><div class="sep"></div>
+      <div onclick="C.flipC('h')">Flip H</div>
+      <div onclick="C.flipC('v')">Flip V</div>
+      <div class="sep"></div>
+
+      <div onclick="C.rotC(180)">Rotate 180°</div>
+      <div onclick="C.rotC(90)">Rotate 90° CW</div>
+      <div onclick="C.rotC(-90)">Rotate 90° CCW</div>
+      <div onclick="T.startFreeRot()">Free Rotate</div>
+      <div class="sep"></div>
+
+      <div class="sub">Shift ▸
+        <div class="md">
+          <div onclick="U.shiftPx(-1,0)">Left<span class="sc">←</span></div>
+          <div onclick="U.shiftPx(1,0)">Right<span class="sc">→</span></div>
+          <div onclick="U.shiftPx(0,-1)">Up<span class="sc">↑</span></div>
+          <div onclick="U.shiftPx(0,1)">Down<span class="sc">↓</span></div>
+        </div>
+      </div>
+      <div class="sep"></div>
+
+      <div onclick="U.imgSize()">Image Size</div>
+      <div onclick="U.crop()">Crop to Selection</div>
+      <div onclick="U.trim()">Trim</div>
+      <div class="sep"></div>
+
+      <div onclick="U.replaceColor()">Replace Color</div>
+      <div onclick="U.colorRange()">Color Range (Select)</div>
+    </div></div>
+    <div class="mi">Effects<div class="md">
       <div onclick="U.briCon()">Brightness/Contrast</div>
       <div onclick="U.hueSat()">Hue/Saturation</div>
       <div onclick="U.desat()">Desaturate</div>
       <div onclick="U.invertCol()">Invert Color</div>
-      <div onclick="U.levels()">Levels</div><div class="sep"></div>
+      <div onclick="U.levels()">Levels</div>
+      <div class="sep"></div>
+
       <div onclick="U.blurImg()">Blur Image…</div>
       <div onclick="U.stroke()">Stroke</div>
       <div onclick="U.outlineFX()">Outline FX…</div>
-      <div onclick="U.replaceColor()">Replace Color</div>
-      <div onclick="U.colorRange()">Color Range (Select)</div>
       <div class="sep"></div>
+
       <div onclick="U.curves()">Curves</div>
       <div onclick="U.effectsPanel()">Effects Panel</div>
     </div></div>
