@@ -1508,6 +1508,39 @@ const T = (() => {
       }
     }
 
+    function _pixelFilledEllipse(ctx, f, t, col) {
+      const x0 = Math.floor(Math.min(f.x, t.x));
+      const y0 = Math.floor(Math.min(f.y, t.y));
+      const x1 = Math.floor(Math.max(f.x, t.x));
+      const y1 = Math.floor(Math.max(f.y, t.y));
+
+      const w = x1 - x0 + 1;
+      const h = y1 - y0 + 1;
+      if (w < 1 || h < 1) return;
+
+      const cx = x0 + (w - 1) / 2;
+      const cy = y0 + (h - 1) / 2;
+      const rx = w / 2;
+      const ry = h / 2;
+
+      ctx.save();
+      ctx.fillStyle = col;
+
+      for (let py = y0; py <= y1; py++) {
+        const ny = (py - cy) / ry;
+        const inside = 1 - ny * ny;
+        if (inside < 0) continue;
+
+        const dx = Math.sqrt(inside) * rx;
+        const lx = Math.ceil(cx - dx);
+        const rx2 = Math.floor(cx + dx);
+
+        if (rx2 >= lx) ctx.fillRect(lx, py, rx2 - lx + 1, 1);
+      }
+
+      ctx.restore();
+    }
+
     function _pixelContour(ctx, pts, col) {
       if (!pts || pts.length < 2) return;
 
@@ -2839,10 +2872,14 @@ const T = (() => {
           return;
         }
 
-        if (shM === 'filled') {
-          ctx.beginPath();
-          ctx.ellipse(cx2, cy2, rx, ry, 0, 0, Math.PI * 2);
-          ctx.fill();
+          if (shM === 'filled') {
+          if (_usePixelShapeStroke()) {
+            _pixelFilledEllipse(ctx, f, t, col);
+          } else {
+            ctx.beginPath();
+            ctx.ellipse(cx2, cy2, rx, ry, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
         } else if (_usePixelShapeStroke()) {
           _pixelEllipse(ctx, f, t, col);
         } else {
@@ -6579,15 +6616,18 @@ cx.globalAlpha = 1;
         const img = new Image();
         const url = BlobURLs.create(file);
 
-        img.onload = () => {
+          img.onload = () => {
           Hi.clear();
           _dirty = false;
+          T.resetStuck();
+          T.selection = null;
 
           C.init(img.width, img.height, 'transparent');
           An.init();
 
           const layer = An.frames[0].layers[0];
           layer.name = (file.name || 'Image').replace(/\.[^.]+$/, '') || 'Image';
+          layer.ctx.imageSmoothingEnabled = false;
           layer.ctx.drawImage(img, 0, 0);
 
           BlobURLs.revoke(url);
