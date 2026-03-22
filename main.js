@@ -60,7 +60,7 @@ const U = (() => {
       h += `<label>SymH<input type="checkbox" ${T.symH ? 'checked' : ''} onchange="T.symH=this.checked;U.uTopt()"></label><label>SymV<input type="checkbox" ${T.symV ? 'checked' : ''} onchange="T.symV=this.checked;U.uTopt()"></label><label>45°<input type="checkbox" ${T.sym45 ? 'checked' : ''} onchange="T.sym45=this.checked"></label><label>-45°<input type="checkbox" ${T.sym45n ? 'checked' : ''} onchange="T.sym45n=this.checked"></label>`;
       if (T.symH || T.symV) h += `<label><button class="bsc" style="padding:0 4px;font-size:8px" onclick="C.symHP=0.5;C.symVP=0.5;C.render();U.uTopt()">↻</button></label><label style="color:var(--txd)">Alt+drag=move axis | </label>`;
       h += `<label>LkH<input type="checkbox" ${T.lockX ? 'checked' : ''} onchange="T.lockX=this.checked;U.uTopt()"></label><label>LkV<input type="checkbox" ${T.lockY ? 'checked' : ''} onchange="T.lockY=this.checked;U.uTopt()"></label>`;
-      if (T.customBrush) h += `<label style="color:var(--acc)">⬦Cust</label>`;
+            if (T.customBrush) h += `<label style="color:var(--acc)">⬦Cust</label><label>Src<input type="checkbox" ${T.patMode==='source'?'checked':''} onchange="T.patMode=this.checked?'source':'none';U.uTopt()" title="Pattern aligned to source"></label><label>Dst<input type="checkbox" ${T.patMode==='dest'?'checked':''} onchange="T.patMode=this.checked?'dest':'none';U.uTopt()" title="Pattern aligned to destination"></label>`;
       h += `<label><button class="bsc" style="padding:0 4px;font-size:10px" onclick="T.brushSize=1;T.hardness=0;T.brushOpacity=100;T.clearCB();U.uTopt()" title="Reset brush">•</button></label>`;
       b.innerHTML = h;
     }
@@ -156,7 +156,7 @@ const U = (() => {
     }
     else if (t === 'move') b.innerHTML = `<label>All Frames<input type="checkbox" ${T.moveAllFrames ? 'checked' : ''} onchange="T.moveAllFrames=this.checked" title="Move this layer in all frames that contain it"></label>`;
     else if (t === 'magnifier') b.innerHTML = `<label style="color:var(--txd)">Click=in · Right=out</label>`;
-    else if (t === 'brush-select') b.innerHTML = `<label style="color:var(--txd)">Drag to capture brush</label><label>Src<input type="checkbox" ${T.patMode==='source'?'checked':''} onchange="T.patMode=this.checked?'source':'none';U.uTopt()" title="Pattern aligned to source: seamless tiling from original position"></label><label>Dst<input type="checkbox" ${T.patMode==='dest'?'checked':''} onchange="T.patMode=this.checked?'dest':'none';U.uTopt()" title="Pattern aligned to destination: tiles from where you click"></label>`;
+        else if (t === 'brush-select') b.innerHTML = `<label style="color:var(--txd)">Drag to capture brush</label>`;
   }
 
   /* Color helpers */
@@ -1743,30 +1743,7 @@ const U = (() => {
     tweenDlg, apTw, togTheme, togCvOnly, showKeys, apK, svKF, ldKF,
     pxCount, about, sMo, cMo, brushCfg, curves, apCurves,
     tagDlg, apTag, playModeDlg, autoSaveCfg, apAutoSave,
-    effectsPanel, prevFx, apEffect,
-    autoSaveCfg: function() {
-      var h = '<h3>Autosave</h3>';
-      h += '<label>Enabled<input type="checkbox" id="as_on"' + (_autoSaveOn ? ' checked' : '') + '></label>';
-      h += '<label>Interval (minutes)<input type="number" id="as_min" value="' + _autoSaveMin + '" min="1" max="20" style="width:50px"></label>';
-      h += '<p style="font-size:9px;color:var(--txd);margin-top:6px">Saves .imagus project automatically when changes are detected. Range: 1 to 20 minutes.</p>';
-      h += '<div class="mb"><button class="bp" onclick="U.apAutoSave()">OK</button><button class="bsc" onclick="U.cMo()">Cancel</button></div>';
-      sMo(h);
-    },
-    apAutoSave: function() {
-      var on = document.getElementById('as_on').checked;
-      var min = Math.max(1, Math.min(20, +document.getElementById('as_min').value || 5));
-      _autoSaveOn = on;
-      _autoSaveMin = min;
-      if (_autoSaveTimer) { clearInterval(_autoSaveTimer); _autoSaveTimer = null; }
-      if (_autoSaveOn) {
-        _autoSaveTimer = setInterval(function() {
-          if (_dirty) {
-            try { IO.save(); } catch(e) { console.error('Autosave failed:', e); }
-          }
-        }, _autoSaveMin * 60000);
-      }
-      cMo();
-    }
+    effectsPanel, prevFx, apEffect
   };
 })();
 
