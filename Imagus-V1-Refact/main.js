@@ -1618,6 +1618,8 @@ const U = (() => {
       if (k === KEYS.play) { An.pp(); return; }
       if (k === KEYS.onionSkin) { An.togOnion(); return; }
       if (k === KEYS.swapColors || k === 'x') { [C.pc, C.sc] = [C.sc, C.pc]; uCol(); return; }
+      if (k === '=' || k === '+') { T.brushSize = Math.min(64, T.brushSize + 1); uTopt(); return; }
+      if (k === '-') { T.brushSize = Math.max(1, T.brushSize - 1); uTopt(); return; }
       if (k === 'q') { togglePxMask(); return; }
       if (e.key === 'Delete') { T.delSel(); return; }
       if (e.key === 'Escape') { T.resetStuck(); T.clrSel(); return; }
