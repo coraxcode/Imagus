@@ -681,9 +681,9 @@ const Ly = (() => {
     Hi.push();
     ly.blendMode = safe;
     if (_layerSync) {
-      const idx = f.activeLayer;
       for (const frm of An.frames) {
-        if (frm.layers[idx]) frm.layers[idx].blendMode = safe;
+        const m = _findByName(ly.name, frm);
+        if (m && m !== ly) m.blendMode = safe;
       }
     }
     sOp(); C.render(); An.uStrip();
@@ -1020,10 +1020,9 @@ const Ly = (() => {
     layer.ctx.putImageData(art, 0, 0);
     layer.mask = null;
     if (_layerSync) {
-      const idx = f.activeLayer;
       for (let fi = 0; fi < An.frames.length; fi++) {
         if (fi === An.cf) continue;
-        const other = An.frames[fi].layers[idx];
+        const other = _findByName(layer.name, An.frames[fi]);
         if (!other) continue;
         other.ctx.clearRect(0, 0, C.W, C.H);
         other.ctx.drawImage(layer.canvas, 0, 0);
@@ -1033,12 +1032,17 @@ const Ly = (() => {
     ui(); C.render();
   }
 
+    function _findByName(name, frame) {
+        if (!name || !frame) return null;
+        return frame.layers.find(ly => ly.name === name) || null;
+      }
+
   function syncMaskToAllFrames(layerIndex) {
     const src = An.frames[An.cf].layers[layerIndex];
     if (!src) return;
     for (let fi = 0; fi < An.frames.length; fi++) {
       if (fi === An.cf) continue;
-      const dst = An.frames[fi].layers[layerIndex];
+      const dst = _findByName(src.name, An.frames[fi]);
       if (!dst) continue;
       dst.mask = cloneMask(src.mask);
     }
@@ -1105,13 +1109,11 @@ const Ly = (() => {
 
   function dup() {
     const f = fr(); if (!f) return;
-    Hi.push();
     const s = f.layers[f.activeLayer];
+    if (!s) return;
+    Hi.push();
     const d = clone(s, s.name + ' copy');
-    f.layers.splice(f.activeLayer + 1, 0, d);
-    f.activeLayer++;
-    ui(); C.render();
-  }
+   }
 
   function up() {
     const f = fr(); if (!f) return;
@@ -1379,7 +1381,7 @@ const Ly = (() => {
   }
 
   return {
-    mk, clone, ensureMask, cloneMask, isMaskEditing,
+     mk, clone, ensureMask, cloneMask, isMaskEditing, _findByName,
     addMask, cycleMask, drawTo,
     paintMaskDot, paintMaskLine, applyMask, syncMaskToAllFrames,
     setBlendMode, openBlendDialog,
