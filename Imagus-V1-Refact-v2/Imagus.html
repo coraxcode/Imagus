@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Imagus v1 — 2D Drawing & Animation</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <div id="menubar">
+    <span class="atitle">Imagus</span>
+    <div class="mi">File<div class="md">
+      <div onclick="U.newFile()">New<span class="sc">Alt+N</span></div>
+      <div onclick="IO.openImg()">Open Image<span class="sc">Ctrl+O</span></div>
+      <div onclick="IO.loadProj()">Load .imagus</div>
+      <div onclick="IO.importSeq()">Import Image Sequence → Timeline</div>
+      <div onclick="IO.importImageAsLayer()">Import Image as Layer</div>
+      <div onclick="IO.save()">Save<span class="sc">Ctrl+S</span></div><div class="sep"></div>
+      <div onclick="IO.exp('png')">Export PNG</div><div onclick="IO.exp('jpeg')">Export JPEG</div>
+      <div onclick="IO.exp('webp')">Export WEBP</div><div onclick="IO.expGIF()">Export GIF</div>
+      <div onclick="IO.expSpritesheet()">Export Spritesheet</div>
+      <div onclick="IO.expImageSeq()">Export Image Sequence</div>
+      <div class="sep"></div>
+      <div onclick="U.autoSaveCfg()">Autosave Settings…</div>
+    </div></div>
+    <div class="mi">Edit<div class="md">
+      <div onclick="Hi.undo()">Undo<span class="sc">Ctrl+Z</span></div><div onclick="Hi.redo()">Redo<span class="sc">Ctrl+Y</span></div>
+    </div></div>
+    <div class="mi">Image<div class="md">
+      <div onclick="C.flipC('h')">Flip H</div>
+      <div onclick="C.flipC('v')">Flip V</div>
+      <div class="sep"></div>
+
+      <div onclick="C.rotC(180)">Rotate 180°</div>
+      <div onclick="C.rotC(90)">Rotate 90° CW</div>
+      <div onclick="C.rotC(-90)">Rotate 90° CCW</div>
+      <div onclick="T.startFreeRot()">Free Rotate</div>
+      <div class="sep"></div>
+
+      <div class="sub">Shift ▸
+        <div class="md">
+          <div onclick="U.shiftPx(-1,0)">Left<span class="sc">←</span></div>
+          <div onclick="U.shiftPx(1,0)">Right<span class="sc">→</span></div>
+          <div onclick="U.shiftPx(0,-1)">Up<span class="sc">↑</span></div>
+          <div onclick="U.shiftPx(0,1)">Down<span class="sc">↓</span></div>
+        </div>
+      </div>
+      <div class="sep"></div>
+
+      <div onclick="U.imgSize()">Image Size</div>
+      <div onclick="U.crop()">Crop to Selection</div>
+      <div onclick="U.trim()">Trim</div>
+      <div class="sep"></div>
+
+      <div onclick="U.replaceColor()">Replace Color</div>
+      <div onclick="U.colorRange()">Color Range (Select)</div>
+    </div></div>
+    <div class="mi">Effects<div class="md">
+      <div onclick="U.briCon()">Brightness/Contrast</div>
+      <div onclick="U.hueSat()">Hue/Saturation</div>
+      <div onclick="U.desat()">Desaturate</div>
+      <div onclick="U.invertCol()">Invert Color</div>
+      <div onclick="U.levels()">Levels</div>
+      <div class="sep"></div>
+
+      <div onclick="U.blurImg()">Blur Image…</div>
+      <div onclick="U.stroke()">Stroke</div>
+      <div onclick="U.outlineFX()">Outline FX…</div>
+      <div class="sep"></div>
+
+      <div onclick="U.curves()">Curves</div>
+      <div onclick="U.effectsPanel()">Effects Panel</div>
+    </div></div>
+    <div class="mi">Brush<div class="md">
+      <div onclick="T.flipCB('h')">Flip Brush H</div><div onclick="T.flipCB('v')">Flip Brush V</div>
+      <div onclick="T.rotCB(90)">Rotate Brush 90° CW</div>
+      <div onclick="T.rotCB(-90)">Rotate Brush 90° CCW</div>
+      <div onclick="T.clearCB()">Reset Brush</div>
+      <div class="sep"></div>
+      <div onclick="U.brushCfg()">Brush Settings…</div>
+    </div></div>
+    <div class="mi">Layers<div class="md">
+      <div onclick="Ly.add()">Add</div>
+      <div onclick="Ly.addMask()">Add Mask</div>
+      <div onclick="Ly.rm()">Delete</div>
+      <div onclick="Ly.dup()">Duplicate</div>
+      <div onclick="Ly.ren()">Rename</div>
+      <div onclick="Ly.openBlendDialog()">Blending Mode...</div>
+      <div class="sep"></div>
+      <div onclick="Ly.up()">Up</div><div onclick="Ly.dn()">Down</div><div class="sep"></div>
+      <div onclick="Ly.mergeDown()">Merge Down</div><div onclick="Ly.flatten()">Flatten</div><div class="sep"></div>
+      <div onclick="Ly.syncAll()">Add Layer to All Frames</div>
+      <div onclick="Ly.syncSel()">Add Layer to Selected Frames</div>
+      <div onclick="Ly.rmAll()">Remove Layer from All Frames</div>
+      <div onclick="Ly.detachAll()">Detach Layer (Keep in Lowest Frame)</div>
+      <div onclick="Ly.detachSel()">Detach Layer from Selected Frames</div>
+      <div class="sep"></div>
+      <div onclick="Ly.linkCel()">Link Cel (Share across frames)</div>
+      <div onclick="Ly.unlinkCel()">Unlink Cel (Make independent)</div>
+    </div></div>
+    <div class="mi">View<div class="md">
+      <div onclick="C.zIn()">Zoom In<span class="sc">Ctrl++</span></div><div onclick="C.zOut()">Zoom Out<span class="sc">Ctrl+-</span></div>
+      <div onclick="C.zFit()">Fit<span class="sc">Ctrl+0</span></div><div onclick="C.z1x()">100%</div><div class="sep"></div>
+      <div onclick="C.togGrid()">Toggle Grid</div><div onclick="U.gridCfg()">Grid Settings</div>
+      <div onclick="U.checkerCfg()">Checker Settings</div><div class="sep"></div>
+      <div onclick="U.tiledCfg()">Tiled Mode…</div><div class="sep"></div>
+      <div onclick="Ref.load()">Reference Image…</div>
+      <div onclick="Prev.toggle()">Preview Window</div><div class="sep"></div>
+      <div onclick="U.togTheme()">Dark/Light</div><div onclick="U.togCvOnly()">Canvas Only<span class="sc">F11</span></div>
+      <div class="sep"></div>
+      <div id="mi_idx" onclick="_indexedMode=!_indexedMode;document.getElementById('mi_idx').textContent=(_indexedMode?'\u2713 ':'')+'Indexed Color Mode'">Indexed Color Mode</div>
+    </div></div>
+    <div class="mi">Help<div class="md">
+      <div onclick="U.showKeys()">Shortcuts</div><div onclick="U.pxCount()">Pixel Count</div><div onclick="U.about()">About</div>
+    </div></div>
+  </div>
+  <div id="toolbar"></div>
+  <div id="cw"><div id="topts"></div><div id="ca"><canvas id="mc"></canvas><canvas id="oc"></canvas><div id="ci">100%</div></div></div>
+  <div id="rp">
+    <div class="ps"><div class="ph">Color</div>
+      <div id="cdsp"><div id="csq"><div id="pc"></div><div id="sc2"></div><div id="csw">⇄</div></div>
+        <div id="cpa"><input type="text" id="chx" value="#000000" maxlength="7" spellcheck="false">
+          <input type="range" class="csl" id="hs" min="0" max="360" value="0">
+          <input type="range" class="csl" id="ss" min="0" max="100" value="0">
+          <input type="range" class="csl" id="ls" min="0" max="100" value="50">
+          <button id="addToPal" style="background:var(--bg2);border:1px solid var(--bd);color:var(--tx);padding:1px 4px;border-radius:2px;cursor:pointer;font-size:8px;font-family:inherit;width:100%;margin-top:2px">+ Add to Palette</button>
+        </div>
+      </div>
+    </div>
+    <div class="ps" style="flex:1;display:flex;flex-direction:column;overflow:hidden"><div class="ph">Layers</div>
+      <div class="lb">
+  <button onclick="Ly.add()">+</button>
+  <button onclick="Ly.rm()">−</button>
+  <button onclick="Ly.dup()">⧉</button>
+  <button onclick="Ly.up()">↑</button>
+  <button onclick="Ly.dn()">↓</button>
+  <button onclick="Ly.syncAll()" title="Add layer to all frames">⟿All</button>
+  <button onclick="Ly.syncSel()" title="Add layer to selected frames">⟿Sel</button>
+  <button onclick="Ly.ren()" title="Rename">✎</button>
+  <button onclick="Ly.detachAll()" title="Detach from other frames">⊘All</button>
+  <button onclick="Ly.detachSel()" title="Detach from selected frames">⊘Sel</button>
+  <button onclick="Ly.addMask()" title="Create a mask for the active layer">Add Mask</button>
+  <button onclick="Ly.applyMask()" title="Apply the mask to the active layer">Apply Mask</button>
+
+  <label
+    title="Sync ON = every edit copies to this layer in ALL frames"
+    style="display:inline-flex;align-items:center;gap:4px;background:var(--acc);color:#fff;border:1px solid var(--acc);border-radius:3px;padding:1px 6px;font-size:9px;font-weight:700;cursor:pointer"
+  >
+    <input
+      type="checkbox"
+      id="lsync"
+      onchange="_layerSync=this.checked"
+      style="accent-color:#fff;width:12px;height:12px"
+    >
+    Sync
+  </label>
+</div>
+
+<div style="padding:1px 8px;display:flex;align-items:center;gap:3px;font-size:9px;color:var(--txd)">
+  <span>Op</span>
+  <input type="range" id="lop" min="0" max="100" value="100" style="flex:1;height:3px">
+  <span id="lov">100</span>
+</div>
+
+<div style="padding:1px 8px 6px;display:flex;align-items:center;gap:4px;font-size:9px;color:var(--txd)">
+  <span>Blend</span>
+  <select id="lblend" style="flex:1;min-width:0;background:var(--bg2);border:1px solid var(--bd);color:var(--tx);padding:1px 2px;border-radius:2px;font-family:inherit;font-size:9px"></select>
+</div>
+      <div id="ll"></div></div>
+    <div class="ps"><div class="ph">Palette</div>
+            <div class="pbtn"><button onclick="U.palPNG()">Add PNG</button><button onclick="U.palReset()">Reset 256</button><button onclick="U.palClear()">Clear</button><button onclick="U.palSort()">Sort</button><button onclick="U.palExport()">Export PNG</button><button onclick="U.palSzDn()" title="Smaller swatches">−</button><button onclick="U.palSzUp()" title="Larger swatches">+</button></div>
+      <div id="pg"></div></div>
+  </div>
+  <div id="tl"><div id="tc">
+    <button onclick="An.addF()">+</button><button onclick="An.dupF()">⧉</button><button onclick="An.rmF()">−</button>
+    <span style="width:1px;height:14px;background:var(--bd)"></span>
+    <button onclick="An.moveL()">◂</button>
+    <button onclick="An.prev()">◀</button><button onclick="An.pp()" id="bp">▶</button><button onclick="An.next()">▶</button>
+    <button onclick="An.moveR()">▸</button>
+    <button onclick="An.stop()">■</button>
+    <span style="width:1px;height:14px;background:var(--bd)"></span>
+    <button onclick="An.togOnion()" id="bo">◎</button>
+    <button onclick="An.togOnionAll()" id="boa" title="Onion: show ALL frames">∞</button>
+    <button onclick="An.selAllF()">☐</button>
+    <button onclick="U.tweenDlg()" style="font-size:8px;width:auto;padding:0 4px">Tw</button>
+    <button onclick="An.moveBlockTo()" style="font-size:8px;width:auto;padding:0 4px" title="Move selected frames to position">⇥</button>
+    <button onclick="U.tagDlg()" style="font-size:8px;width:auto;padding:0 4px" title="Frame Tags">🏷</button>
+    <button onclick="U.playModeDlg()" style="font-size:8px;width:auto;padding:0 4px" title="Playback Mode">⇆</button>
+    <span id="fi">1/1</span>
+    <div id="fc"><span>ms</span><input type="number" id="fdi" value="100" min="1" max="65535"></div>
+  </div><div id="fs"></div></div>
+</div>
+<div id="mr"></div>
+<div id="prevw" style="display:none;position:fixed;bottom:140px;right:8px;z-index:500;border:1px solid var(--acc);border-radius:4px;box-shadow:0 4px 12px rgba(0,0,0,.4);background:var(--bg2);overflow:hidden"><div style="display:flex;align-items:center;gap:3px;padding:2px 4px;font-size:8px;color:var(--txd);background:var(--bg1);cursor:move" id="prevhdr"><span>Preview</span><button onclick="Prev.close()" style="margin-left:auto;background:none;border:none;color:var(--txd);cursor:pointer;font-size:10px">✕</button></div><canvas id="prevc" width="1" height="1" style="display:block;image-rendering:pixelated"></canvas></div>
+<div id="refp" style="display:none"><div class="rh" id="refhdr"><span>Ref</span><input type="range" id="refop" min="5" max="100" value="50" style="width:44px"><input type="range" id="refsz" min="10" max="400" value="100" style="width:44px"><button onclick="Ref.close()">✕</button></div><img id="refimg"></div>
+<script src="globals.js"></script>
+<script src="core.js"></script>
+<script src="tools.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
