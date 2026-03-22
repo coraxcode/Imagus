@@ -1546,8 +1546,10 @@ const U = (() => {
       ly.opacity = +this.value;
       document.getElementById('lov').textContent = this.value;
       if (_layerSync) {
-        const idx = f.activeLayer;
-        for (const frm of An.frames) { if (frm.layers[idx]) frm.layers[idx].opacity = ly.opacity; }
+        for (const frm of An.frames) {
+          const m = Ly._findByName(ly.name, frm);
+          if (m && m !== ly) m.opacity = ly.opacity;
+        }
       }
       C.render();
     });
