@@ -1508,7 +1508,12 @@ const U = (() => {
   /* Event wiring */
   function iEvt() {
     const a = C.area;
-    a.addEventListener('mousedown', e => { e.preventDefault(); T.onDown(e); });
+    a.addEventListener('mousedown', e => {
+      e.preventDefault();
+      const ae = document.activeElement;
+      if (ae && ae !== document.body && ae.blur) ae.blur();
+      T.onDown(e);
+    });
     window.addEventListener('mousemove', e => T.onMove(e));
     window.addEventListener('mouseup', e => T.onUp(e));
     a.addEventListener('contextmenu', e => e.preventDefault());
@@ -1635,7 +1640,10 @@ const U = (() => {
       if (e.key === 'Shift' && T._shiftPreview) { T._clearShiftPrev(); C.render(); }
     });
 
-    window.addEventListener('blur', () => T.resetStuck());
+    document.getElementById('topts').addEventListener('mouseup', e => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') e.target.blur();
+    });
+    window.addEventListener('blur', () => T.resetStuck());window.addEventListener('blur', () => T.resetStuck());
     window.addEventListener('focus', () => T.resetStuck());
     document.addEventListener('visibilitychange', () => { if (document.hidden) T.resetStuck(); });
   }
