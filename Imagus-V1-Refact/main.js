@@ -744,8 +744,8 @@ const U = (() => {
   }
 
   function showKeys() {
-    sMo(`<h3>Shortcuts</h3><div style="font-size:9px;line-height:1.7;max-height:140px;overflow-y:auto;margin-bottom:8px">B Brush · E Eraser · A Airbrush · J Jumble · K Light/Dark · D Gradient · G Fill<br>I Picker · V Move · H Pan · Z Zoom · S Smooth · T Text<br>M Select · O Contour · W Wand · L Line · R Rect · C Ellipse<br>1 Prev · 2 Next · 3 GoTo · 4 Play · 5 Onion · 0 All Frames<br>SymH & SymV (Alt+Drag – Move axis)<br>Arrow Keys = Shift 1px · X Swap<br>Ctrl+Z/Y · Ctrl+C/V/X · Ctrl+A · Ctrl+S<br>Space=Pan · Alt=Picker · Enter=Apply · Esc=Deselect · F11<br>Ctrl+Click=Select Layer · Ctrl+Right-Drag=Move Layer</div><label>Edit (JSON):</label><textarea id="keyjson">${JSON.stringify(KEYS, null, 2)}</textarea><div class="mb"><button class="bsc" onclick="U.ldKF()">Load</button><button class="bsc" onclick="U.svKF()">Save</button><button class="bp" onclick="U.apK()">Apply</button></div>`);
-  }
+      sMo(`<h3>Shortcuts</h3><div style="font-size:9px;line-height:1.7;max-height:140px;overflow-y:auto;margin-bottom:8px">B Brush · E Eraser · A Airbrush · J Jumble · K Light/Dark · D Gradient · G Fill<br>I Picker · V Move · H Pan · Z Zoom · S Smooth · T Text<br>M Select · O Contour · W Wand · L Line · R Rect · C Ellipse<br>1 Prev · 2 Next · 3 GoTo · 4 Play · 5 Onion · 0 All Frames<br>SymH & SymV (Alt+Drag – Move axis)<br>Arrow Keys = Shift 1px · = Brush Size Up · - Brush Size Down · X Swap<br>Ctrl+Z/Y · Ctrl+C/V/X · Ctrl+A · Ctrl+S<br>Space=Pan · Alt=Picker · Enter=Apply · Esc=Deselect · F11<br>Ctrl+Click=Select Layer · Ctrl+Right-Drag=Move Layer</div><label>Edit (JSON):</label><textarea id="keyjson">${JSON.stringify(KEYS, null, 2)}</textarea><div class="mb"><button class="bsc" onclick="U.cMo()">Cancel</button><button class="bp" onclick="U.apK()">Apply</button></div>`);
+    }
 
   function apK() {
     try { KEYS = JSON.parse(document.getElementById('keyjson').value); cMo(); }
