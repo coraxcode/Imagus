@@ -990,13 +990,13 @@ const T = (() => {
         const imgd = la.ctx.getImageData(0, 0, C.W, C.H);
         la.ctx.clearRect(0, 0, C.W, C.H); la.ctx.putImageData(imgd, dx2, dy2);
         if (moveAll) {
-          const idx = An.frames[An.cf].activeLayer;
           for (let fi = 0; fi < An.frames.length; fi++) {
             if (fi === An.cf) continue;
-            const oLy = An.frames[fi].layers[idx];
+            const oLy = Ly._findByName(la.name, An.frames[fi]);
             if (!oLy) continue;
             const oid = oLy.ctx.getImageData(0, 0, C.W, C.H);
-            oLy.ctx.clearRect(0, 0, C.W, C.H); oLy.ctx.putImageData(oid, dx2, dy2);
+            oLy.ctx.clearRect(0, 0, C.W, C.H);
+            oLy.ctx.putImageData(oid, dx2, dy2);
           }
         }
         mo = { type: 'movelayer', ...pos }; C.render();
@@ -1152,10 +1152,9 @@ const T = (() => {
       C.render();
     }
     if (_layerSync && la && ['brush', 'eraser', 'airbrush', 'jumble', 'smooth', 'lightdark', 'bucket', 'line', 'rect', 'circle', 'contour', 'gradient'].includes(cur)) {
-      const idx = An.frames[An.cf].activeLayer;
       for (let fi = 0; fi < An.frames.length; fi++) {
         if (fi === An.cf) continue;
-        const oLy = An.frames[fi].layers[idx];
+        const oLy = Ly._findByName(la.name, An.frames[fi]);
         if (!oLy) continue;
         oLy.ctx.clearRect(0, 0, C.W, C.H);
         oLy.ctx.drawImage(la.canvas, 0, 0);
